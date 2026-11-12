@@ -40,7 +40,7 @@ export function isLocale(value: unknown): value is Locale {
 /**
  * 從 `Accept-Language` 挑出支援的語系, 判斷不出來就回傳預設值。
  *
- * 行為刻意與後端 `shared/http/errors.py` 的 `resolve_language()` 一致 (只做前綴比對、不處理
+ * 行為刻意與後端 `shared/i18n.py` 的 `resolve_language()` 一致 (只做前綴比對、不處理
  * q 權重): 兩邊不一致會出現「UI 是中文但錯誤訊息是英文」這種只在特定瀏覽器設定下才重現的
  * 錯誤。`tests/shared/i18n/locale.test.ts` 用與後端測試相同的案例釘住它。
  */

@@ -402,8 +402,8 @@ jobs:
       # 備份失敗就中止: 有資料 volume 卻沒有在跑的資料庫, 代表主機狀態不是預期的, 該由人先看過。
       # 全新主機 (連資料 volume 都沒有) 沒有東西可備份, allow-fresh 讓第一次部署直接過。
       # 備份在 checkout 新 tag 之前: 備份檔名的版號取自這份 checkout, 這時它還是線上正在跑的版本,
-      # 也就是這份資料的結構所屬的版本。回滾到那一版後, make db restore 才找得到它。
-      # make backup 同時打包 uploads volume。備份期間 nginx
+      # 也就是這份資料的結構所屬的版本。回滾到那一版後, make backup restore db 才找得到它。
+      # make backup 同時打包 uploads volume。備份期間 nginx 與 worker
       # 會暫停 (資料庫與檔案才是同一個時間點), 之後的 make start 本來就要重建容器, 多停的只有備份那幾秒。
       # make start 依主機 .env 的 MODE (make init prod 寫的 production) 啟動, 而且只認停在
       # v<APP_VERSION> tag 上的 checkout —— 上面剛 checkout 的就是。

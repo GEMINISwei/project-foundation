@@ -63,7 +63,7 @@ export async function proxy(request: NextRequest) {
   return ensureLocaleCookie(request, NextResponse.next())
 }
 
-// `healthz` 也排除: 那是 Docker healthcheck 每 10 秒打一次的探活端點 (app/healthz/route.ts),
+// `healthz` 也排除: 那是 Docker healthcheck 每 30 秒打一次的探活端點 (app/healthz/route.ts),
 // 它不需要保護, 也不該每次都被寫一次語系 cookie。
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico|public/|healthz).*)"],
