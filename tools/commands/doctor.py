@@ -10,6 +10,7 @@ import subprocess
 import urllib.error
 import urllib.request
 
+from tools.commands.logs import journal_problem
 from tools.compose import SERVICES, app_cli, compose, container, container_running, log_driver
 from tools.env import ENV_EXAMPLE, app_version, fail, load_env, parse_env_file
 
@@ -58,6 +59,14 @@ def check_env(env: dict[str, str]) -> None:
             "LOG_DRIVER=json-file：重建容器（每次部署）後舊的 log 會消失；"
             "Linux 主機建議用 journald",
         )
+
+
+def check_journal(env: dict[str, str]) -> None:
+    """log 交給 journald 時, 這個帳號要讀得到: 讀不到的話 make logs 什麼都查不出來。"""
+    if log_driver(env) != "journald":
+        return
+    problem = journal_problem()
+    record("錯誤" if problem else "正常", "log 查詢", problem or "讀得到 journald")
 
 
 def check_services(env: dict[str, str]) -> bool:
@@ -119,6 +128,7 @@ def run(_name: str, args: list[str]) -> None:
     record("正常", "版本", f"v{app_version()}")
     check_docker()
     check_env(env)
+    check_journal(env)
     if any(container_running(env, service) for service in SERVICES):
         if check_services(env):
             check_runtime(env)

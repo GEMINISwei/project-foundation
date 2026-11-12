@@ -56,7 +56,8 @@ web 伺服器端的錯誤與**瀏覽器端沒被接住的錯誤**（`event: clie
 `.env` 的 `LOG_DRIVER` 決定容器 log 的去處：
 
 - `journald`（`make init prod` 在有 systemd 的主機上的預設）：log 交給主機的 journald，**重建容器之後仍然查得到**，
-  `make logs trace`、`make logs errors` 會改讀 journalctl。保留多久由主機的 journald 設定決定
+  `make logs trace`、`make logs errors` 會改讀 journalctl。執行指令的帳號要在 `systemd-journal` 群組，
+  不在的話 `make logs` 與 `make doctor` 會指出來。保留多久由主機的 journald 設定決定
   （`/etc/systemd/journald.conf` 的 `SystemMaxUse`）。
 - `json-file`：log 跟著容器走，每個服務最多 5 個 20MB 的檔案，**重建容器（每次部署）後舊的就消失**。
   部署前的備份會留一份當下的 log（`backups/*.logs.tar.gz`）。
@@ -72,7 +73,7 @@ api 與 worker 的 error 等級以上的 log 會成為事件；不會帶使用�
 
 ```bash
 git clone <repo> /srv/<專案名> && cd /srv/<專案名>
-sudo usermod -aG docker "$USER"   # 做完要重新登入
+sudo usermod -aG docker,systemd-journal "$USER"   # 做完要重新登入; 後者是 make logs 讀 journald 用的
 make init prod                    # 只產生 .env; 祕密是這台主機自己產的, 不要從開發機抄
 make doctor                       # 確認 Docker 與 Compose 的版本符合需求
 git checkout v<版號>
@@ -179,7 +180,7 @@ Variable 沒設定或列出的組找不到 environment，這次就一套都不�
 主機上做到 `make init prod` 就停（不要 `make start`），其餘交給第一次發布：
 
 - [ ] 主機的 repo 能 `git fetch`（私有 repo 加一把唯讀的 Deploy key）
-- [ ] 主機上有部署用的帳號，在 `docker` 群組、能讀寫 repo 目錄
+- [ ] 主機上有部署用的帳號，在 `docker` 與 `systemd-journal` 群組、能讀寫 repo 目錄
 - [ ] Settings → Environments 建立 `production`（或 `production-<系統名>`），加入 secrets：
 
   | Secret | 內容 |
