@@ -1,0 +1,16 @@
+# LOG_DRIVER=json-file: log 跟著容器走, 重建容器 (每次部署) 後舊的就消失。
+# 預設無上限, 不設的話長跑的部署會把磁碟寫滿。
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
+services:
+  postgres: *logging
+  migrate: *logging
+  api: *logging
+  worker: *logging
+  web: *logging
+  nginx: *logging

@@ -1,0 +1,4 @@
+# skill 的腳本與 hook 一樣由 PATH 上的 python3 執行, 沿用 hook 的設定 (語法目標 3.9)。
+extend = "../hooks/ruff.toml"
+# 快取不放這裡: skills/ 底下每個資料夾都會被當成一個 skill。
+cache-dir = "../hooks/.ruff_cache"

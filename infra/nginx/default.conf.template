@@ -1,0 +1,35 @@
+include /etc/nginx/snippets/trusted-proxy.conf;
+include /etc/nginx/snippets/access-log-format.conf;
+
+server {
+    listen 80;
+    access_log /var/log/nginx/access.log request_id;
+
+    resolver 127.0.0.11 valid=10s;
+
+    # ── 請求體大小上限 ────────────────────────────────────────────────────────
+    #
+    # 防護用的天花板, 與 Next 的 Server Action 上限 (next.config.ts) 相同, 不開放設定。
+    # 比 Next 小的話, 介於兩者之間的請求只會拿到 nginx 沒有訊息的 413。兩邊格式不同
+    # (`16m`／`16mb`) 共用不了變數, 由 apps/web/tests/next.config.test.ts 對齊。
+    # 給使用者看的上限寫在各功能裡, 見 docs/foundation/new-module.md。
+    client_max_body_size 16m;
+
+    include /etc/nginx/snippets/security-headers.conf;
+
+    # ── 刻意**沒有** `location /api/` ─────────────────────────────────────────
+    #
+    # 瀏覽器不直接呼叫後端: 讀取走 Server Component、寫入走 Server Action, 都在 Next 的
+    # 伺服器端經 compose 內網連 api。加回 `/api/` 等於把每條後端路由對外曝露;
+    # 需要從瀏覽器呼叫時, 在模組的 actions.ts 包一層具名的 Server Action。
+    # 需要 WebSocket 時補一條專屬 location (連同 `map $http_upgrade`), 不是開放整個 /api/。
+    #
+    # 另一半在 next.config.ts (那裡也沒有 `/api/:path*` rewrite), 兩處要一起看。
+
+    # Frontend (含 Next.js static assets)
+    location / {
+        set $frontend_upstream http://web:3000;
+        proxy_pass $frontend_upstream;
+        include /etc/nginx/snippets/proxy-headers.conf;
+    }
+}

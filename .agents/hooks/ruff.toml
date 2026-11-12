@@ -1,0 +1,7 @@
+# hook 由 PATH 上的 python3 執行, 不是 api 的虛擬環境: macOS 內建的是 3.9。
+# 其餘沿用 api 的 ruff 設定, 只把語法目標降到 3.9, format 才不會寫出新版才有的語法。
+extend = "../../apps/api/pyproject.toml"
+target-version = "py39"
+
+[lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S603", "S607", "ARG001", "ARG002"]

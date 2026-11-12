@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#
+# AI agent 做的 commit 要帶 Co-authored-by, 名稱寫到模型與版本
+# (docs/foundation/workflow.md〈AI 協作的共同作者〉)。git 與 GitHub 都不強制這行, 漏了之後就分不出是哪個模型做的。
+#
+# 怎麼知道是 agent 在 commit: AI_AGENT 是跨工具的慣例, Claude Code 自己會設, Codex 由專案的
+# .codex/config.toml 補上。人自己 commit 時沒有它, 不檢查 trailer; CI 略過標記則誰都不能帶 (見下方)。
+# 啟用: make init dev 會把 core.hooksPath 設成 .githooks (已經 clone 的重跑一次即可)。
+set -euo pipefail
+
+message="$1"
+
+# 對所有人都適用: 不可帶 GitHub 的 CI 略過標記。GitHub 在整份訊息裡找它, 而 squash 預設把分支上
+# 每個 commit 的訊息都併進 main, 一個 commit 帶著它, main 就不跑 CI (部署也找不到 main 的結果)。
+# 另一種寫法是訊息最後的 `skip-checks: true` trailer, 效果相同。
+# 只看會留在 commit 裡的部分: git 會拿掉 # 開頭的行與 `commit -v` 剪刀線之後的 diff。
+if sed '/^# -\{24\} >8 -\{24\}$/,$d' "${message}" | grep -v '^#' \
+    | grep -qiE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true'; then
+    echo "commit 訊息不能有 CI 略過標記（標題或內文都算）：squash 會把它帶進 main，main 就不跑 CI。" >&2
+    echo "要略過某些檢查時，寫成 workflow 的條件（說明見 docs/foundation/workflow.md〈提交與 CI〉）。" >&2
+    exit 1
+fi
+
+[ -n "${AI_AGENT:-}" ] || exit 0
+
+# merge commit 的訊息是 git 產生的。
+if head -n 1 "${message}" | grep -q '^Merge '; then
+    exit 0
+fi
+
+# 只看最後的 trailer 區塊: 內文裡提到的不算。
+coauthors="$(git interpret-trailers --parse "${message}" | grep -i '^co-authored-by:' || true)"
+if [ -z "${coauthors}" ]; then
+    echo "AI agent（${AI_AGENT}）的 commit 要在訊息最後加一行：" >&2
+    echo "    Co-authored-by: <產品> <模型與版本> <email>（例：Claude Opus 5.5 <noreply@anthropic.com>）" >&2
+    echo "說明見 docs/foundation/workflow.md〈AI 協作的共同作者〉。" >&2
+    exit 1
+fi
+
+# 同一家的不同模型能力差很多, 回頭追問題時要分得出來: 名稱裡要有版本號。
+if ! printf '%s\n' "${coauthors}" | sed 's/<.*//' | grep -q '[0-9]'; then
+    echo "Co-authored-by 的名稱要寫到模型與版本（例：Claude Opus 5.5），不要只寫廠商或工具名。" >&2
+    exit 1
+fi

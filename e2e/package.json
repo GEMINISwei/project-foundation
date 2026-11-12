@@ -1,0 +1,21 @@
+{
+  "name": "e2e",
+  "private": true,
+  "type": "module",
+  "//": [
+    "整套系統 (nginx → web → api → PostgreSQL) 的瀏覽器測試, 不屬於任何一個 app。",
+    "在 repo 根目錄執行: 開發中用 `make e2e test <檔案>` (常駐的開發環境), 完整檢查用 `make e2e check` (拋棄式的正式環境)。"
+  ],
+  "engines": {
+    "node": ">=26.13.0 <27"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "^26",
+    "typescript": "~5.9.3"
+  }
+}

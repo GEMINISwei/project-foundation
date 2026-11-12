@@ -1,0 +1,42 @@
+name: PR
+
+# PR 標題與描述的格式 (.github/scripts/check-pr.sh)。跟 ci.yml 分開: 只改標題或描述時不必重跑整套 CI,
+# 但在 GitHub 上改了標題或描述 (edited) 也要重新檢查。
+# job 名稱 `pr` 要加進 main ruleset 的 required checks (docs/foundation/workflow.md〈開發流程〉), 沒加的話紅了照樣能合併。
+on:
+  # 不聽 `ready_for_review`: 檢查不分 Draft, 轉 Ready 時內容沒變, 重跑結果一定一樣。
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr:
+    # 合併或關閉之後改標題、描述 (例如回頭勾「檢查」的 checkbox) 也會觸發 edited, 但那時格式已經
+    # 不影響任何東西, 分支也可能刪了, 改動檢查拿不到 PR 的 commit。required check 只在合併前有作用。
+    if: github.event.pull_request.state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # 完整歷史: 改動檢查要逐一看 PR 裡每個 commit 改了什麼, 預設只抓一個 commit。
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # 標題與描述走環境變數, 不直接嵌進 run: 它們是任何人都能填的文字, 嵌進去等於讓人注入指令。
+      - name: PR 標題與描述
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: .github/scripts/check-pr.sh
+      # 新增的抑制註解要在同一行寫理由 (腳本開頭有說明)。
+      - name: PR 的改動
+        if: always()
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 .github/scripts/check-pr-changes.py

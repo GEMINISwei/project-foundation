@@ -1,0 +1,15 @@
+# LOG_DRIVER=journald: log 交給主機的 journald, 重建容器後仍查得到
+# (`make logs` 會改讀 journalctl)。保留多久由主機的 journald 設定決定。
+x-logging: &logging
+  logging:
+    driver: journald
+    options:
+      tag: "{{.Name}}"
+
+services:
+  postgres: *logging
+  migrate: *logging
+  api: *logging
+  worker: *logging
+  web: *logging
+  nginx: *logging

@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+# CRLF 會讓這些檔案直接壞掉
+*.sh          text eol=lf
+Makefile      text eol=lf
+*.template    text eol=lf
+*.conf        text eol=lf
+.env.example  text eol=lf
+
+# 產生的檔案: PR 裡預設摺疊
+contracts/openapi.json                linguist-generated
+apps/web/shared/api/schema.d.ts       linguist-generated
+apps/web/package-lock.json            linguist-generated
+apps/api/uv.lock                      linguist-generated

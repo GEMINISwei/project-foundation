@@ -1,0 +1,105 @@
+/* Public auth pages */
+
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(var(--space-6), env(safe-area-inset-top))
+           max(var(--space-6), env(safe-area-inset-right))
+           max(var(--space-6), env(safe-area-inset-bottom))
+           max(var(--space-6), env(safe-area-inset-left));
+  background: var(--color-surface-sunken);
+}
+
+.card {
+  width: min(440px, 100%);
+  background: var(--color-surface-card);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-10) var(--space-10) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ---- App name heading ---- */
+.appName {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-h1);
+  letter-spacing: var(--ls-heading);
+  color: var(--color-text-display);
+  margin-bottom: var(--space-2);
+}
+
+/* ---- Form fields ---- */
+.fields {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* 定位由 kit 的 `.inputTrailing` 負責 (TextInput 的 trailing 插槽),
+   這裡只管按鈕本身的外觀 —— 兩邊都設 position 會讓它疊在錯的地方。 */
+.inputTrailingBtn {
+  width: var(--control-height-md);
+  height: var(--control-height-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.inputTrailingBtn:hover { color: var(--color-text-body); }
+
+/* ---- Security note ---- */
+.securityNote {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  letter-spacing: var(--ls-body);
+}
+
+/* ---- Error banner ---- */
+.errorBanner {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-danger-bg);
+  border: var(--border-width-hairline) solid var(--color-danger-fg);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--color-danger-fg);
+  line-height: var(--lh-snug);
+  margin-bottom: var(--space-1);
+}
+
+@media (max-width: 480px) {
+  .page {
+    align-items: flex-start;
+    padding: max(var(--space-4), env(safe-area-inset-top))
+             max(var(--space-4), env(safe-area-inset-right))
+             max(var(--space-4), env(safe-area-inset-bottom))
+             max(var(--space-4), env(safe-area-inset-left));
+  }
+
+  .card {
+    margin-block: auto;
+    padding: var(--space-8) var(--space-5) var(--space-6);
+    border-radius: var(--radius-lg);
+  }
+}

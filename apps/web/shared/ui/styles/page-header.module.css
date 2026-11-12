@@ -1,0 +1,79 @@
+.pageHeader {
+  position: relative;
+  left: 50%;
+  width: calc(100vw - var(--layout-sidebar-width));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin: calc(var(--space-8) * -1) 0 var(--space-8);
+  margin-left: calc((100vw - var(--layout-sidebar-width)) / -2);
+  padding: var(--space-8) var(--space-8) var(--space-5);
+  border-bottom: var(--border-width-hairline) solid var(--color-border-subtle);
+  background: var(--color-surface-card);
+}
+
+.pageHeaderText { min-width: 0; }
+.pageTitle {
+  margin: 0;
+  color: var(--color-text-display);
+  font-family: var(--font-serif);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+}
+.pageSubtitle {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-snug);
+}
+.pageHeaderActions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.pageHeaderMobileActions { display: none; flex-shrink: 0; }
+
+@media (max-width: 720px) {
+  .pageHeader {
+    position: sticky;
+    top: 0;
+    left: auto;
+    z-index: var(--z-sticky);
+    width: calc(100% + var(--space-8));
+    min-height: calc(60px + env(safe-area-inset-top));
+    flex-direction: row;
+    gap: var(--space-3);
+    margin: calc(var(--space-8) * -1) calc(var(--space-4) * -1) var(--space-5);
+    padding: env(safe-area-inset-top) max(var(--space-3), env(safe-area-inset-right)) 0 max(var(--space-4), env(safe-area-inset-left));
+    background: color-mix(in srgb, var(--color-surface-card) 96%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  .pageHeaderText { flex: 1; }
+  .pageSubtitle { display: none; }
+  .pageTitle { overflow: hidden; font-size: var(--fs-h3); white-space: nowrap; text-overflow: ellipsis; }
+  .pageHeaderActions { width: auto; flex-shrink: 0; flex-wrap: nowrap; gap: var(--space-2); }
+  .pageHeaderActions > * { flex: 0 0 auto; }
+  .pageHeaderActions:has(+ .pageHeaderMobileActions) { display: none; }
+  .pageHeaderMobileActions { display: flex; }
+}
+
+.detailBackLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  text-decoration: none;
+}
+
+.detailBackLink:hover {
+  color: var(--color-text-body);
+}

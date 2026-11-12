@@ -1,0 +1,8 @@
+# 發布 release 會直接部署, 一定要使用者確認 (Codex 的 PreToolUse hook 不支援 ask, 由這條規則補上)。
+# 寫法固定, 直接下 gh release 或換寫法呼叫會被 .agents/hooks/guard_commands.py 擋下。說明見 docs/foundation/hooks-and-skills.md。
+prefix_rule(
+    pattern = [".agents/skills/release/scripts/publish.sh"],
+    decision = "prompt",
+    match = [".agents/skills/release/scripts/publish.sh 0.1.0 --prerelease"],
+    not_match = [".agents/skills/release/scripts/preview.sh 0.1.0"],
+)

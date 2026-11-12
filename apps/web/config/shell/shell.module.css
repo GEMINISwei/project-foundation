@@ -1,0 +1,355 @@
+/* Protected layout — sidebar app shell */
+
+/* ---- App shell ---- */
+.shell {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* ---- Sidebar ---- */
+.sidebar {
+  width: var(--layout-sidebar-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-card);
+  border-right: var(--border-width-hairline) solid var(--color-border-subtle);
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* ---- Logo block ---- */
+.sidebarLogo {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-6) var(--space-5) var(--space-5);
+  gap: var(--space-2);
+}
+
+.sidebarLogo::after {
+  content: "";
+  position: absolute;
+  left: var(--space-6);
+  right: var(--space-6);
+  bottom: 0;
+  height: 1px;
+  background: var(--color-border-subtle);
+}
+
+.areaBadge {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+}
+
+.sidebarWordmark {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--ls-label);
+  color: var(--color-text-display);
+}
+
+.bottomNavigation {
+  display: none;
+}
+
+/* ---- Nav section ---- */
+.sidebarNav {
+  flex: 1;
+  padding: var(--space-6) var(--space-3) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+}
+
+.navSectionLabel {
+  padding: 0 var(--space-3) var(--space-2);
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-heading);
+}
+
+.navLink {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5) var(--space-3) var(--space-6);
+  border-radius: var(--radius-xl);
+  color: var(--color-text-body);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0;
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard);
+}
+
+.navLinkLabel {
+  white-space: nowrap;
+}
+
+.navLink svg {
+  width: var(--size-icon-lg);
+  height: var(--size-icon-lg);
+  flex-shrink: 0;
+  stroke-width: 2;
+  color: var(--color-text-muted);
+  transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.navLink:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-body);
+}
+
+.navLinkActive,
+.navLinkActive:hover {
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+}
+
+.navLinkActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 6px;
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  background: var(--color-primary);
+}
+
+.navLinkActive svg {
+  color: var(--color-on-primary-container);
+}
+
+/* ---- Sidebar footer ---- */
+.sidebarFooter {
+  flex-shrink: 0;
+  padding: var(--space-3);
+  border-top: var(--border-width-hairline) solid var(--color-border-subtle);
+}
+
+/* 頭像選單的觸發按鈕: 整塊 (頭像、暱稱、角色) 都是點擊區。 */
+.sidebarUser {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.sidebarUser:hover,
+.sidebarUser[aria-expanded="true"] {
+  background: var(--color-surface-hover);
+}
+
+.userMenuIcon {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.userAvatar {
+  width: var(--size-avatar-md);
+  height: var(--size-avatar-md);
+  border-radius: var(--radius-round);
+  background: var(--color-surface-sunken);
+  border: var(--border-width-thick) solid var(--color-border-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-body);
+  letter-spacing: var(--ls-body);
+}
+
+.userDetails {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.userName {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.userRole {
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  letter-spacing: var(--ls-body);
+}
+
+/* ---- Main content ---- */
+.main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--color-bg-app);
+}
+
+@media (max-width: 1024px) {
+  .shell {
+    --layout-sidebar-width: var(--layout-sidebar-width-rail);
+  }
+
+  .sidebarLogo {
+    padding: var(--space-5) var(--space-3);
+  }
+
+  .sidebarLogo::after {
+    left: var(--space-3);
+    right: var(--space-3);
+  }
+
+  .sidebarWordmark,
+  .navSectionLabel,
+  .navLinkLabel,
+  .userDetails,
+  .userMenuIcon {
+    display: none;
+  }
+
+  /* 收成窄欄時標籤只留一個字寬, 用一個點代替, 仍看得出是後台。 */
+  .areaBadge {
+    width: var(--space-2);
+    height: var(--space-2);
+    padding: 0;
+    overflow: hidden;
+    color: transparent;
+    background: var(--color-primary);
+  }
+
+  .sidebarNav {
+    padding: var(--space-5) var(--space-2) var(--space-3);
+  }
+
+  .navLink {
+    justify-content: center;
+    min-height: var(--control-height-lg);
+    padding: var(--space-3);
+  }
+
+  .sidebarFooter {
+    padding: var(--space-2) var(--space-2) max(var(--space-2), env(safe-area-inset-bottom));
+  }
+
+  .sidebarUser {
+    justify-content: center;
+    padding: var(--space-2) 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    --layout-sidebar-width: 0;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .main {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    padding-bottom: calc(var(--layout-bottom-nav-height) + env(safe-area-inset-bottom));
+  }
+
+  .bottomNavigation {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: var(--z-nav);
+    min-height: calc(var(--layout-bottom-nav-height) + env(safe-area-inset-bottom));
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    align-items: start;
+    padding: var(--space-1) max(var(--space-2), env(safe-area-inset-right)) env(safe-area-inset-bottom) max(var(--space-2), env(safe-area-inset-left));
+    border-top: var(--border-width-hairline) solid var(--color-border-subtle);
+    background: color-mix(in srgb, var(--color-surface-card) 96%, transparent);
+    backdrop-filter: blur(12px);
+    box-shadow: var(--shadow-nav);
+  }
+
+  .bottomNavItem {
+    min-width: 0;
+    min-height: 54px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: var(--space-1) var(--space-2) 3px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .bottomNavAvatar {
+    width: var(--size-icon-lg);
+    height: var(--size-icon-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-round);
+    border: var(--border-width-thick) solid var(--color-border-brand);
+    font-size: var(--fs-xs);
+    color: var(--color-text-body);
+  }
+
+  .bottomNavItemActive {
+    background: var(--color-primary-container);
+    color: var(--color-on-primary-container);
+  }
+
+  .bottomNavItemActive svg {
+    stroke-width: 2.4;
+  }
+}

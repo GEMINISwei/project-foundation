@@ -1,0 +1,10 @@
+# tools/ 用主機的 python3 執行 (最低 3.9), 語法目標與 api 不同; 其餘規則沿用 api 的設定。
+extend = "../apps/api/pyproject.toml"
+target-version = "py39"
+
+[lint]
+# 這裡的工作就是呼叫 docker、git、uv 這些指令, 參數都是自己組的。
+extend-ignore = ["S603", "S607"]
+
+[lint.per-file-ignores]
+"tests/**" = ["S101", "ARG001", "ARG002"]

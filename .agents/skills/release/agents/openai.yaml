@@ -1,0 +1,4 @@
+# Codex 的設定: 與 SKILL.md 的 disable-model-invocation: true 對應 (Claude 讀那一行)。
+# 發版會觸發部署, 只在使用者明確要求時才用。兩邊要一致, 由 tests/test_agent_skills.py 檢查。
+policy:
+  allow_implicit_invocation: false

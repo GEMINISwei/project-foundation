@@ -1,0 +1,6 @@
+# 專案層級的 Codex 設定: 專案的 .codex/ 要先被信任才會載入 (見 docs/foundation/hooks-and-skills.md)。
+
+# 讓 .githooks/commit-msg 知道這個 commit 是 agent 做的。AI_AGENT 是跨工具的慣例,
+# Claude Code 自己會設, Codex 要在這裡補上。
+[shell_environment_policy]
+set = { AI_AGENT = "codex" }

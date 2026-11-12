@@ -1,0 +1,149 @@
+.tableCard {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-xs);
+}
+
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+}
+
+.dataTable thead {
+  background: var(--color-surface-hover);
+}
+
+.dataTable th,
+.dataTable td {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: var(--border-width-hairline) solid var(--color-border-subtle);
+  text-align: left;
+}
+
+.dataTable th {
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-heading);
+  white-space: nowrap;
+}
+
+.dataTable td {
+  color: var(--color-text-body);
+  font-size: var(--fs-sm);
+  vertical-align: middle;
+}
+
+.dataTable tbody tr {
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.dataTable tbody tr:hover {
+  background: var(--color-surface-card);
+}
+
+.mobileCardRow {
+  composes: mobileCard from "./primitives.module.css";
+}
+
+@keyframes tableFocusFade {
+  0%,
+  55% {
+    background: var(--color-primary-container);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px var(--space-3);
+  border: var(--border-width-hairline) solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.badgeSuccess {
+  background: var(--color-success-bg);
+  border-color: color-mix(in srgb, var(--color-success-fg) 30%, transparent);
+  color: var(--color-success-fg);
+}
+
+.badgeWarning {
+  background: var(--color-warning-bg);
+  border-color: color-mix(in srgb, var(--color-warning-fg) 30%, transparent);
+  color: var(--color-warning-fg);
+}
+
+.badgeMuted {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-default);
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 720px) {
+
+  .dataTable {
+    min-width: var(--container-content);
+  }
+
+  .tableCard {
+    overflow-x: auto;
+  }
+
+  .mobileCardTable {
+    display: block;
+    min-width: 0;
+    background: transparent;
+  }
+
+  .mobileCardTable thead {
+    display: none;
+  }
+
+  .mobileCardTable tbody {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .mobileCardTable tr {
+    display: block;
+    overflow: hidden;
+  }
+
+  .mobileCardTable td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    width: 100%;
+    min-height: 48px;
+    padding: var(--space-3) !important;
+    text-align: right !important;
+  }
+
+  .mobileCardTable td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--color-text-muted);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    text-align: left;
+  }
+
+  .mobileCardTable td:last-child {
+    border-bottom: 0 !important;
+  }
+}

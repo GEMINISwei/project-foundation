@@ -1,0 +1,37 @@
+# 環境變數 (.env.example 是清單, 要進版控)
+.env*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.import_linter_cache/
+.coverage
+.coverage.*
+
+# Node
+node_modules/
+.next/
+next-env.d.ts
+tsconfig.tsbuildinfo
+coverage/
+
+# make backup 的輸出
+backups/
+
+# Playwright
+test-results/
+playwright-report/
+e2e/.auth/
+
+# 系統與編輯器
+.DS_Store
+.vscode/
+.idea/
+
+# Claude 的個人設定
+.claude/settings.local.json

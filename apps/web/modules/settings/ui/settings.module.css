@@ -1,0 +1,93 @@
+.page {
+  padding: var(--space-8);
+}
+
+/* 與列表頁同寬 (`Container size="lg"` 也是 --container-wide), 由 app/theme.css 決定要不要撐滿。 */
+.content {
+  max-width: var(--container-wide);
+}
+
+.section {
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-card);
+  margin-bottom: var(--space-6);
+  overflow: hidden;
+}
+
+.sectionTitle {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: var(--border-width-hairline) solid var(--color-border-subtle);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-muted);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  min-height: 64px;
+}
+
+.settingInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.settingName {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-body);
+}
+
+.settingDesc {
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  line-height: var(--lh-snug);
+}
+
+.settingValue {
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-body);
+}
+
+.settingAction {
+  flex-shrink: 0;
+}
+
+/* 表單型的設定區塊 (個人資料、改密碼)。`.settingRow` 是「一行一個控制項」的版面,
+   放得下一個下拉選單, 放不下三個帶 label 的欄位加一顆按鈕。 */
+.settingForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: var(--space-4);
+  }
+
+  .settingRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    min-height: auto;
+  }
+
+}

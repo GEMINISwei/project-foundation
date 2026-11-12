@@ -1,0 +1,36 @@
+name: Setup
+description: 安裝這個 repo 的工具鏈與相依。各 job 只開自己需要的那一半。
+inputs:
+  api:
+    description: 安裝後端的相依 (uv 與 apps/api)
+    default: "false"
+  web:
+    description: 安裝前端的相依 (Node 與 apps/web)
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - if: inputs.api == 'true'
+      uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      with:
+        enable-cache: true
+        cache-dependency-glob: apps/api/uv.lock
+    - if: inputs.api == 'true'
+      shell: bash
+      run: cd apps/api && uv sync --frozen
+    - if: inputs.web == 'true'
+      uses: actions/setup-node@v7
+      with:
+        node-version-file: apps/web/.nvmrc
+        cache: npm
+        cache-dependency-path: apps/web/package-lock.json
+    # 直接快取 node_modules: npm ci 每次都要重新解開幾百個套件, 鎖定檔沒變時整段跳過。
+    - if: inputs.web == 'true'
+      uses: actions/cache@v6
+      id: web-node-modules
+      with:
+        path: apps/web/node_modules
+        key: web-node-modules-${{ runner.os }}-${{ hashFiles('apps/web/.nvmrc', 'apps/web/package-lock.json') }}
+    - if: inputs.web == 'true' && steps.web-node-modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: cd apps/web && npm ci

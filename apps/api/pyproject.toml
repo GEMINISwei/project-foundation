@@ -1,0 +1,154 @@
+[project]
+name = "api"
+version = "0.0.0"
+# 釘單一 minor。升 Python 要同時改四處: 這一行、ruff 的 target-version、mypy 的 python_version、
+# Dockerfile 的 FROM, 再跑 `uv lock`。
+requires-python = ">=3.15,<3.16"
+# 正式環境相依一律 `==`: 這裡是我們同意的版本, 下一次 `uv lock` 才不會在沒人決定的情況下跨 major。
+dependencies = [
+    "fastapi==0.162.4",
+    # 不用 `uvicorn[standard]`: 它帶進的 pyyaml 還沒有 Python 3.15 的預編譯檔, 安裝時要現場編譯。
+    # 只列出實際用到的加速元件。
+    "uvicorn==0.54.0",
+    "uvloop==0.23.0",
+    "httptools==0.9.0",
+    # `[asyncio]` 帶進 greenlet: 少了它要到執行期才丟 MissingGreenlet。
+    "sqlalchemy[asyncio]==2.1.8",
+    "asyncpg==0.32.0",
+    "pydantic==2.14.3",
+    "pydantic-settings==2.16.2",
+    # migrate 服務用 api 的 image 跑 migration, 所以是正式環境相依。
+    "alembic==1.20.1",
+    "pyjwt==2.15.1",
+    "bcrypt==5.0.0",
+    "python-multipart==0.0.33",
+    "structlog==26.1.0",
+    # 排程的 cron 運算式。
+    "croniter==7.0.0",
+    # 錯誤追蹤: 只在設定 SENTRY_DSN 時啟用。
+    "sentry-sdk==2.74.0",
+]
+
+# dev group 用 `>=`: 不進正式環境; 實際版本由 uv.lock 固定 (一律 --frozen)。
+[dependency-groups]
+dev = [
+    "ruff>=0.17.4",
+    "mypy>=2.4.1",
+    "import-linter>=2.16",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    # Starlette 的測試用戶端; httpx 已被它標為過時。
+    "httpx2>=2.16.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+filterwarnings = ["error"]
+markers = ["integration: 需要連上 PostgreSQL 的測試"]
+
+[tool.coverage.run]
+source = ["app", "modules", "shared"]
+
+[tool.coverage.report]
+# 防退步的地板, 不是目標。
+fail_under = 85
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py315"
+src = ["."]
+
+[tool.ruff.lint]
+# ASYNC 抓 async 函式裡的阻塞呼叫; ARG 抓沒用到的參數 (在 service 通常代表查詢條件被忽略)。
+# C901 與 PLR0915 是防退步的地板, 擋「長到沒人敢動」。
+select = ["E", "F", "I", "N", "W", "UP", "B", "ASYNC", "S", "RUF", "ARG", "C901", "PLR0915", "TID251"]
+# 全形標點在中文註解與字串裡是正確用法。
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-statements = 40
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 的依賴注入放在參數預設值上。
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Form",
+    "shared.auth.identity.require",
+]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# 錯誤要帶錯誤代碼並跟著請求語系走, 裸的 HTTPException 兩者都沒有。
+"fastapi.HTTPException".msg = "用 shared.errors 的 ErrorSpec"
+"starlette.exceptions.HTTPException".msg = "用 shared.errors 的 ErrorSpec"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "ARG001", "ARG002"]
+"migrations/versions/**" = ["E501"]
+# 這些 import 的作用是載入資料表, 不能被當成「沒用到」自動移除。
+"migrations/env.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.15"
+mypy_path = "."
+files = ["app", "modules", "shared", "tests"]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = ["croniter.*"]
+ignore_missing_imports = true
+
+# ── 依賴邊界 (import-linter): app → modules → shared ─────────────────────────
+[tool.importlinter]
+root_packages = ["app", "modules", "shared"]
+
+[[tool.importlinter.contracts]]
+name = "shared 不可引用 app 或 modules"
+type = "forbidden"
+source_modules = ["shared"]
+forbidden_modules = ["app", "modules"]
+
+[[tool.importlinter.contracts]]
+name = "跨模組只能引用對方的 public"
+type = "independence"
+modules = ["modules.*"]
+ignore_imports = ["modules.** -> modules.*.public"]
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+# Permission enum 要是所有模組的聯集才能進 OpenAPI, 是唯一的例外。
+name = "modules 不可引用組裝層（app.permissions 除外）"
+type = "forbidden"
+source_modules = ["modules"]
+forbidden_modules = ["app"]
+ignore_imports = ["modules.** -> app.permissions"]
+unmatched_ignore_imports_alerting = "none"
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "組裝層只能引用模組的 public 或 manifest"
+type = "forbidden"
+source_modules = ["app"]
+forbidden_modules = ["modules"]
+ignore_imports = ["app.** -> modules.*.public", "app.** -> modules.*.manifest"]
+unmatched_ignore_imports_alerting = "none"
+allow_indirect_imports = true

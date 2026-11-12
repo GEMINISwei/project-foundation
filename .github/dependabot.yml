@@ -1,0 +1,72 @@
+# 系統上線後不追最新版, 只在有漏洞時升: 每週的升版 PR 沒人有空逐一驗證, 合進去反而增加變動風險。
+# 代價是相依會慢慢落後, 由人在發版前盤點、整批升級 (見 docs/foundation/workflow.md〈相依升級〉)。
+#
+# - uv、npm、github-actions: `open-pull-requests-limit: 0` 關掉版本更新。安全更新另有自己的上限,
+#   不受這個值影響, 但要在 repo 的 Settings 打開 Dependency graph、Dependabot alerts 與
+#   security updates 才會運作。
+# - docker、docker-compose: GitHub 的漏洞資料庫不涵蓋 image, 安全更新顧不到, 所以保留版本更新,
+#   但每月一次、只送 patch (例如 nginx 1.31.7 → 1.31.8)。
+# - 沒人追的: api Dockerfile 用 `COPY --from` 複製的 uv 執行檔, Dependabot 不會提, 盤點時掃 image 才看得到。
+#   CI 用的 actionlint 映像檔 (版本寫在 ci.yml) 也是。
+#
+# 被 peer 擋住的 major 在這裡 ignore, 理由與移除條件寫在原處 (見 docs/foundation/workflow.md〈相依升級〉)。
+# 拿掉 ignore 的時機就是那裡的移除條件成立的時候。
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: uv
+    directory: /apps/api
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 0
+    groups:
+      # vitest 與 @vitest/* 互相把 peer 釘在同一個精確版號, 分開升的 PR 兩邊都 npm ci 不過。
+      # 群組預設只套用在版本更新, 安全更新要明寫 applies-to。
+      vitest:
+        applies-to: security-updates
+        patterns: ["vitest", "@vitest/*"]
+    ignore:
+      # 見 apps/web/package.json 的 `//devDependencies`: 跟著 .nvmrc 的 Node major 手動升。
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+      # 見 apps/web/eslint.config.mjs 的「ESLint 卡在 9.x」。
+      # 見 apps/web/package.json 的 `//devDependencies`。
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+
+  # 只在 CI 與開發機跑, 不進任何 image。@types/node 與 typescript 跟 apps/web 同一條線, 一起手動升。
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+
+  # Dockerfile 的 base image。只寫 major (node:24) 或 minor (python:3.14) 的 tag 本來就會吃到修補版,
+  # 這裡擋的是跳到下一個 Node major 或 Python minor: 兩者都要跟 .nvmrc、pyproject.toml 一起手動升。
+  - package-ecosystem: docker
+    directories: [/apps/api, /apps/web]
+    schedule: { interval: monthly }
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+
+  # compose 裡的 postgres 與 nginx。postgres 跨 major 是資料遷移 (見 compose 檔註解), 不自動提。
+  - package-ecosystem: docker-compose
+    directory: /infra/compose
+    schedule: { interval: monthly }
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major, version-update:semver-minor]

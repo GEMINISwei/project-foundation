@@ -1,0 +1,243 @@
+name: CI
+# 每個 job 跑 `make check` 的其中一項, 平行執行; `ci-gate` 彙總結果, 是 main 唯一的 required check
+# (新增或改名 job 時不必回頭改 GitHub 的設定)。
+#
+# 只改 Markdown 的 PR 走 docs 模式: 只跑不需要啟動服務的測試, 其餘跳過。
+# deploy.yml 也會呼叫這份 (workflow_call), 要部署的 commit 通過的是同一套檢查。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # PR 上有新的 commit 就取消舊的; main 與部署不取消, 每個 commit 都要有結果。
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - name: 判斷模式
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          files=""
+          if [ "${EVENT}" = pull_request ]; then
+            files="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          fi
+          mode="$(printf '%s\n' "${files}" | .github/scripts/ci-mode.sh "${EVENT}")"
+          echo "模式：${mode}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
+
+  lint:
+    needs: [changes]
+    if: needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup
+        with:
+          api: true
+          web: true
+      - run: make check lint
+      # CI 自己的檔案: workflow 的語法與裡面的 shell。ubuntu runner 內建 shellcheck。
+      - name: workflow 與 CI 腳本
+        run: |
+          shellcheck .github/scripts/*.sh .githooks/*
+          docker run --rm -v "${PWD}:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+
+  contract:
+    needs: [changes]
+    if: needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup
+        with:
+          api: true
+          web: true
+      - run: make check contract
+
+  migrations:
+    needs: [changes]
+    if: needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          # 要跟最近的 release tag 比對。
+          fetch-depth: 0
+      - run: make check migrations
+
+  types:
+    needs: [changes]
+    if: needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup
+        with:
+          api: true
+          web: true
+      - run: make check types
+
+  api-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup
+        with:
+          api: true
+      - run: make check api-test
+
+  api-integration:
+    needs: [changes]
+    if: needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup
+        with:
+          api: true
+      - run: make check integration
+
+  web-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup
+        with:
+          web: true
+      - run: make check web-test
+
+  build:
+    needs: [changes]
+    if: needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup
+        with:
+          web: true
+      - run: make check build
+
+  e2e:
+    needs: [changes]
+    if: needs.changes.outputs.mode == 'full'
+    name: e2e (${{ matrix.shard }}/${{ strategy.job-total }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # 測試變多、這個 job 拖慢合併時加份數 ([1, 2]): 每份各起一套環境, 不在同一套裡加 worker。
+        shard: [1]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - run: cd e2e && npm ci && npx playwright install --with-deps chromium
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: apps/api
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+          load: true
+          tags: ci-api:e2e
+      - uses: docker/build-push-action@v7
+        with:
+          context: apps/web
+          target: prod
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+          load: true
+          tags: ci-web:e2e
+      # Server Action 的真金鑰只在執行期注入; image 裡只能有 Dockerfile 那個公開的常數。
+      - name: web image 裡只有公開的 id salt
+        run: |
+          salt="$(sed -n 's/^ARG NEXT_ACTIONS_ID_SALT="\(.*\)"$/\1/p' apps/web/Dockerfile)"
+          [ -n "${salt}" ] || { echo "apps/web/Dockerfile 找不到 NEXT_ACTIONS_ID_SALT" >&2; exit 1; }
+          docker run --rm --entrypoint node -e EXPECTED_SALT="${salt}" ci-web:e2e -e '
+            const key = require("./.next/server/server-reference-manifest.json").encryptionKey
+            if (key !== process.env.EXPECTED_SALT) {
+              console.error("image 裡的 Server Action 金鑰不是 Dockerfile 的公開常數")
+              process.exit(1)
+            }'
+      - run: make e2e check
+        env:
+          COMPOSE_PROJECT_NAME: ci
+          API_IMAGE: ci-api:e2e
+          WEB_IMAGE: ci-web:e2e
+          E2E_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
+
+  ci-gate:
+    needs: [changes, lint, contract, migrations, types, api-test, api-integration, web-test, build, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          sparse-checkout: .github/scripts
+      - name: 判定全部 job 的結果
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          MODE: ${{ needs.changes.outputs.mode }}
+        run: printf '%s' "${NEEDS}" | .github/scripts/ci-gate.sh "${MODE}"

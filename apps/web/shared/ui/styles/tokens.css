@@ -1,0 +1,144 @@
+/* UI kit 的設計變數: 名字是 `shared/ui` 與所有模組 CSS module 共用的契約, 值是預設外觀。
+ *
+ * 跟著 `shared/ui` 走: 元件用到的每一個 `var(--…)` 都在這裡有預設值, 主題檔只負責覆寫
+ * (`tests/shared/ui/tokens.test.ts` 守)。
+ *
+ * **要換外觀不要改這裡**, 在 `app/theme.css` 覆寫想改的變數 —— 它在這份之後載入。
+ * 新增一個變數時加在這裡 (給預設值), 名字照**用途**取。 */
+
+:root {
+  /* 原生表單控制項與捲軸只認這個屬性。 */
+  color-scheme: dark;
+
+  /* ---- 表面 ---- */
+  --color-bg-app: #0F1115;
+  --color-surface-card: #171A21;
+  --color-surface-sunken: #0B0D11;
+  --color-surface-input: #171A21;
+  --color-surface-hover: #232833;
+
+  /* ---- 文字 ---- */
+  --color-text-display: #F9FAFB;
+  --color-text-heading: #F5F5F5;
+  --color-text-body: #D1D5DB;
+  --color-text-secondary: #9CA3AF;
+  --color-text-muted: color-mix(in srgb, #9CA3AF 60%, #6B7280);
+
+  /* ---- 品牌與行動 ---- */
+  --color-primary: #818CF8;
+  --color-primary-hover: #A5B4FC;
+  --color-primary-container: #312E81;
+  --color-on-primary-container: #A5B4FC;
+  --color-action-primary: #4F46E5;
+  --color-action-primary-hover: #4338CA;
+  --color-text-on-primary: #F9FAFB;
+  --color-focus-ring: color-mix(in srgb, #818CF8 65%, transparent);
+  --color-scrim: color-mix(in srgb, #0B0D11 72%, transparent);
+
+  /* ---- 狀態 ---- */
+  --color-success-fg: color-mix(in srgb, #5C7A52 55%, #FFFFFF);
+  --color-success-bg: color-mix(in srgb, #5C7A52 22%, #0F1115);
+  --color-warning-fg: color-mix(in srgb, #B08544 55%, #FFFFFF);
+  --color-warning-bg: color-mix(in srgb, #B08544 22%, #0F1115);
+  --color-danger-fg: color-mix(in srgb, #A8584F 55%, #FFFFFF);
+  --color-danger-bg: color-mix(in srgb, #A8584F 22%, #0F1115);
+  --color-info-fg: color-mix(in srgb, #5B7184 55%, #FFFFFF);
+  --color-info-bg: color-mix(in srgb, #5B7184 22%, #0F1115);
+  --color-shadow: #000000;
+
+  /* ---- 邊框 ---- */
+  --color-border-subtle: #232833;
+  --color-border-default: #333A48;
+  --color-border-control: color-mix(in srgb, #9CA3AF 55%, #232833);
+  --color-border-brand: #4F46E5;
+
+  /* ---- 間距 (與 shared/ui 的 spacing() 同一組階號) ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---- 字體與字級 ---- */
+  /* 系統字型, 不載入網路字型 (build 不必連網, 使用者也不必下載)。導入 DS 時在這裡換掉。 */
+  --font-serif: "Songti TC", "STSong", "Noto Serif CJK TC", serif;
+  --font-sans: "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", system-ui, sans-serif;
+  --fs-h1: 1.875rem;
+  --fs-h2: 1.4375rem;
+  --fs-h3: 1.125rem;
+  --fs-lg: 1rem;
+  --fs-base: 0.9375rem;
+  --fs-sm: 0.8125rem;
+  --fs-xs: 0.75rem;
+  /* 觸控裝置上輸入框的字級。iOS Safari 對小於 16 個 CSS px 的輸入框會在聚焦時放大畫面,
+     門檻是絕對的 px, 所以這裡刻意不用 rem: `html` 的字級是 `--fs-base` (15px), 1rem 只有 15px。 */
+  --fs-input-touch: 16px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --lh-tight: 1.2;
+  --lh-snug: 1.4;
+  --lh-normal: 1.6;
+  --ls-heading: 0.04em;
+  --ls-body: 0.01em;
+  --ls-label: 0.06em;
+
+  /* ---- 版面寬度 ---- */
+  --container-toast: 480px;
+  --container-narrow: 520px;
+  --container-form: 720px;
+  --container-content: 760px;
+  --container-wide: 1180px;
+  --layout-bottom-nav-height: 64px;
+  --layout-sidebar-width: 216px;
+  --layout-sidebar-width-rail: 72px;
+
+  /* ---- 框線、圓角、陰影 ---- */
+  --focus-ring: 0 0 0 3px var(--color-focus-ring);
+  --border-width-hairline: 1px;
+  --border-width-thick: 2px;
+  --border-width-accent: 3px;
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+  --radius-round: 50%;
+  --shadow-xs: 0 1px 2px color-mix(in srgb, var(--color-shadow) 5%, transparent);
+  --shadow-sm: 0 2px 6px color-mix(in srgb, var(--color-shadow) 6%, transparent);
+  --shadow-md: 0 6px 20px color-mix(in srgb, var(--color-shadow) 8%, transparent);
+  --shadow-lg: 0 16px 44px color-mix(in srgb, var(--color-shadow) 12%, transparent);
+  --shadow-nav: 0 -4px 18px color-mix(in srgb, var(--color-shadow) 6%, transparent);
+
+  /* ---- 動態 ---- */
+  --ease-standard: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+
+  /* ---- 控制項、不透明度、圖示 ---- */
+  --control-height-sm: 36px;
+  --control-height-md: 44px;
+  --control-height-lg: 52px;
+  --opacity-disabled: 0.55;
+  --opacity-muted: 0.7;
+  --size-icon-sm: 16px;
+  --size-icon-md: 20px;
+  --size-icon-lg: 24px;
+  --size-avatar-sm: 32px;
+  --size-avatar-md: 40px;
+
+  /* ---- 疊層順序 (一律從這裡取, 不要就地寫數字) ---- */
+  --z-raised: 1;
+  --z-dropdown: 200;
+  --z-sticky: 800;
+  --z-nav: 900;
+  --z-overlay: 1000;
+  --z-toast: 1100;
+}

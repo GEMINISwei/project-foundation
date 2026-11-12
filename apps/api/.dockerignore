@@ -1,0 +1,10 @@
+# 模式要帶 `**/`: 只寫 `__pycache__/` 只比對得到根目錄那一層。
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage*
+tests/
+.env*

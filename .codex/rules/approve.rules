@@ -1,0 +1,8 @@
+# 申請放行 (改測試檔、改防線檔案、插隊開分支), 一定要使用者確認: Codex 的 hook 不支援 ask, 由這條規則補上。
+# 寫法固定, 換寫法呼叫會被 .agents/hooks/guard_commands.py 擋下。
+prefix_rule(
+    pattern = ["python3", ".agents/hooks/approve.py"],
+    decision = "prompt",
+    match = ["python3 .agents/hooks/approve.py test apps/api/tests/test_architecture.py"],
+    not_match = ["python3 .agents/hooks/guard_tests.py codex"],
+)

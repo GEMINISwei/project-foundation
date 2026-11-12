@@ -1,0 +1,70 @@
+{
+  "name": "web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "//engines": [
+    ".nvmrc 只寫 major (給 nvm、CI 與 Dockerfile), 這裡是下限。跨 Node major 要同時改這裡、.nvmrc 與 Dockerfile 的 NODE_VERSION。"
+  ],
+  "engines": {
+    "node": ">=26.13.0 <27"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit",
+    "lint": "eslint && npm run check:architecture && npm run check:deadcode",
+    "check:architecture": "depcruise app config modules shared proxy.ts instrumentation.ts --config .dependency-cruiser.cjs",
+    "check:deadcode": "knip",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "//scripts": [
+    "沒有 gen-types: 契約與型別檔由 repo 根目錄的 `make gen-types` 產生。"
+  ],
+  "dependencies": {
+    "lucide-react": "^1.71.0",
+    "next": "16.4.6",
+    "openapi-fetch": "0.17.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "^0.0.1"
+  },
+  "//devDependencies": [
+    "`typescript` 停在 5.9: openapi-typescript 只支援 ^5、typescript-eslint 只支援 <6.1 (2026-11 實測)。",
+    "升級條件: `npm view openapi-typescript peerDependencies` 與 `npm view typescript-eslint peerDependencies` 都放寬。",
+    "`@types/node` 跟著執行期的 Node major (.nvmrc)。`vite` 直接列出: 不指定的話樹裡會出現兩個 vite。"
+  ],
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.9",
+    "@types/node": "^26",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.3.0",
+    "@vitest/coverage-v8": "^5.1.0",
+    "babel-plugin-react-compiler": "1.0.0",
+    "dependency-cruiser": "18.7.2",
+    "eslint": "^10.14.0",
+    "eslint-config-next": "16.4.6",
+    "jsdom": "^31.0.0",
+    "knip": "^6.45.0",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.7",
+    "vitest": "^5.1.0"
+  },
+  "//allowScripts": [
+    "允許執行安裝腳本的套件 (`npm approve-scripts`)。npm 之後的版本會擋下沒列在這裡的腳本。",
+    "fsevents: vite 在 macOS 的原生檔案監看。unrs-resolver: eslint import resolver 用 napi-postinstall 補上平台的原生綁定。",
+    "只寫名稱不釘版本 (`--no-allow-scripts-pin`): 每次升版 (安全更新或整批升級) 釘版本的核准都會失效。",
+    "新增套件時看到「not yet covered by allowScripts」, 先讀過它的安裝腳本再核准。"
+  ],
+  "allowScripts": {
+    "fsevents": true,
+    "unrs-resolver": true
+  }
+}

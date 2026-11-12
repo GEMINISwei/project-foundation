@@ -1,0 +1,585 @@
+.container {
+  width: 100%;
+  max-width: var(--container-wide);
+  margin: 0 auto;
+  padding-left: var(--space-6);
+  padding-right: var(--space-6);
+}
+
+.containerSm {
+  max-width: var(--container-content);
+}
+
+.containerLg {
+  max-width: var(--container-wide);
+}
+
+.containerPadded {
+  padding-top: var(--space-8);
+  padding-bottom: var(--space-8);
+}
+
+/* 版面規則留在 CSS, 值由元件以 `--flex-*` 自訂屬性帶進來。
+ *
+ * 這樣寫而不是把 flex-direction 之類直接塞進 style 屬性, 換到兩件事:
+ *   1. 可以寫 media query —— 例如
+ *      `@media (width < 640px) { .myRow { --flex-direction: column } }`,
+ *      inline style 做不到這件事。
+ *   2. 呼叫端傳進來的 `className` 能真的覆寫版面; inline style 的優先權高於任何 class,
+ *      覆寫會靜靜失效。
+ *
+ * 包在 `:where()` 裡是為了第 2 點: `:where()` 的優先權是 0, 所以呼叫端的 class
+ * (例如 `.paginationButtons` 的 `justify-content: center`) 必定蓋得過這裡的預設。
+ * 少了它, 這些宣告會和呼叫端的 class 同分, 勝負取決於 CSS 檔的宣告順序 ——
+ * 那是會在某次無關的重排之後才爆的問題。
+ *
+ * 各項預設值採用對應 CSS 屬性的初始值, 未帶 prop 時不改變一般 flex 行為。 */
+:where(.flex) {
+  display: flex;
+  flex-direction: var(--flex-direction, row);
+  align-items: var(--flex-align, stretch);
+  justify-content: var(--flex-justify, flex-start);
+  gap: var(--flex-gap, 0);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-md);
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  border: var(--border-width-hairline) solid transparent;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  letter-spacing: 0;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard),
+              border-color var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard),
+              transform var(--dur-fast) var(--ease-standard);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.button:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.buttonContained {
+  background: var(--color-action-primary);
+  border-color: var(--color-action-primary);
+  color: var(--color-text-on-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.buttonContained:hover:not(:disabled) {
+  background: var(--color-action-primary-hover);
+  border-color: var(--color-action-primary-hover);
+  color: var(--color-text-on-primary);
+}
+
+.buttonOutlined {
+  background: var(--color-surface-input);
+  border-color: var(--color-border-control);
+  color: var(--color-text-body);
+}
+
+.buttonOutlined:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text-body);
+}
+
+/* variant 自己的 box-shadow 會蓋過 base.css 的 :focus-visible, 這裡提高優先權。 */
+.button:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.buttonLarge {
+  min-height: var(--control-height-lg);
+  padding: 0 var(--space-6);
+  font-size: var(--fs-base);
+}
+
+.buttonFullWidth {
+  width: 100%;
+}
+
+.surface {
+  background: var(--color-surface-card);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.label {
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-secondary);
+}
+
+.requiredMark {
+  margin-left: var(--space-1);
+  color: var(--color-danger-fg);
+}
+
+.input,
+.select {
+  width: 100%;
+  height: var(--control-height-md);
+  padding: 0 var(--space-3);
+  border: var(--border-width-hairline) solid var(--color-border-control);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-input);
+  color: var(--color-text-body);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-standard),
+              box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.selectControl {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: var(--space-10);
+}
+
+.selectIndicator {
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.select:disabled + .selectIndicator {
+  opacity: var(--opacity-muted);
+}
+
+/* 有前置圖示或尾端控制項時, input 外面多包的定位容器。
+   圖示用絕對定位疊上去而不是放進 flex 容器: input 必須是那一層唯一的可輸入區域,
+   點在圖示上也要能聚焦到輸入框 (圖示本身 pointer-events: none)。 */
+.inputAdorned {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.inputIcon {
+  position: absolute;
+  left: var(--space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.inputTrailing {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+}
+
+.inputLg {
+  height: var(--control-height-lg);
+  font-size: var(--fs-base);
+}
+
+/* 觸控裝置上輸入框至少 16px: iOS Safari 會在字級小於 16px 的輸入框取得焦點時放大畫面。
+   viewport 已經鎖住縮放, 這裡是保底: Safari 分頁會忽略 `user-scalable` (見 docs/foundation/decisions.md 第 14 條)。 */
+@media (pointer: coarse) {
+  .input,
+  .inputLg,
+  .select {
+    font-size: var(--fs-input-touch);
+  }
+}
+
+.inputWithIcon {
+  padding-left: var(--space-12);
+}
+
+.inputWithTrailing {
+  padding-right: var(--space-12);
+}
+
+.inputError {
+  border-color: var(--color-danger-fg);
+}
+
+.input:focus,
+.select:focus {
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+.input:disabled,
+.select:disabled {
+  background: var(--color-surface-sunken);
+  opacity: var(--opacity-muted);
+}
+
+.fieldError {
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  color: var(--color-danger-fg);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: var(--color-scrim);
+  backdrop-filter: blur(3px);
+}
+
+.modal {
+  width: min(100%, 560px);
+  max-height: min(860px, calc(100dvh - var(--space-12)));
+  overflow: auto;
+  border: var(--border-width-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-lg);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-raised);
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  border-bottom: var(--border-width-hairline) solid var(--color-border-subtle);
+  background: var(--color-surface-card);
+}
+
+.modalTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  color: var(--color-text-heading);
+}
+
+.modalBody {
+  padding: var(--space-6);
+}
+
+.modalClose {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  width: var(--control-height-md);
+  height: var(--control-height-md);
+  font-size: var(--fs-h3);
+}
+
+.modalClose:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-body);
+}
+
+.notifyViewport {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  width: min(var(--container-toast), calc(100vw - var(--space-10)));
+  pointer-events: none;
+}
+
+.notify {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  background: var(--color-surface-card);
+  color: var(--color-text-body);
+  box-shadow: var(--shadow-md);
+  font-size: var(--fs-sm);
+  animation: notifySlideIn var(--dur-base) var(--ease-out);
+  pointer-events: auto;
+}
+
+.notifySuccess {
+  border-color: color-mix(in srgb, var(--color-success-fg) 35%, transparent);
+  border-left: var(--border-width-accent) solid var(--color-success-fg);
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
+}
+
+.notifyError {
+  border-color: color-mix(in srgb, var(--color-danger-fg) 35%, transparent);
+  border-left: var(--border-width-accent) solid var(--color-danger-fg);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+}
+
+.notifyInfo {
+  border-color: color-mix(in srgb, var(--color-info-fg) 35%, transparent);
+  border-left: var(--border-width-accent) solid var(--color-info-fg);
+  background: var(--color-info-bg);
+  color: var(--color-info-fg);
+}
+
+.notifyWarning {
+  border-color: color-mix(in srgb, var(--color-warning-fg) 35%, transparent);
+  border-left: var(--border-width-accent) solid var(--color-warning-fg);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+}
+
+.notifyIcon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.notifyMessage {
+  flex: 1;
+  line-height: var(--lh-snug);
+}
+
+.notifyClose {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-icon-md);
+  height: var(--size-icon-md);
+  margin: -2px -2px 0 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: var(--opacity-muted);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: opacity var(--dur-fast);
+}
+
+.notifyClose:hover {
+  opacity: 1;
+}
+
+.loading {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.spinner {
+  width: var(--size-icon-lg);
+  height: var(--size-icon-lg);
+  border: var(--border-width-thick) solid var(--color-border-subtle);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes notifySlideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.paginationBar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.paginationButtons {
+  grid-column: 2;
+  justify-content: center;
+}
+
+.paginationSummary {
+  grid-column: 3;
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.paginationCurrent {
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.paginationLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: var(--control-height-sm);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: var(--border-width-hairline) solid var(--color-border-default);
+  background: var(--color-surface-input);
+  color: var(--color-text-body);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+
+.paginationLink:hover {
+  background: var(--color-surface-hover);
+}
+
+.paginationLinkDisabled {
+  opacity: var(--opacity-disabled);
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.emptyState {
+  padding: var(--space-10) var(--space-6);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.errorState {
+  padding: var(--space-10) var(--space-6);
+  text-align: center;
+  color: var(--color-danger-fg);
+}
+
+.dialogForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dialogFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 720px) {
+  .container {
+    padding-left: max(var(--space-4), env(safe-area-inset-left));
+    padding-right: max(var(--space-4), env(safe-area-inset-right));
+  }
+
+  .overlay {
+    align-items: flex-end;
+    padding: max(var(--space-4), env(safe-area-inset-top)) 0 0;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: calc(100dvh - max(var(--space-4), env(safe-area-inset-top)));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .modalHeader {
+    padding: var(--space-3) var(--space-4) var(--space-3);
+  }
+
+  .modalBody {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .notifyViewport {
+    right: max(var(--space-4), env(safe-area-inset-right));
+    bottom: calc(var(--layout-bottom-nav-height) + max(var(--space-4), env(safe-area-inset-bottom)));
+    width: calc(100vw - var(--space-8));
+  }
+
+  .paginationBar {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+
+  .paginationButtons {
+    grid-column: auto;
+    justify-content: center;
+  }
+
+  .paginationSummary {
+    grid-column: auto;
+    justify-content: center;
+  }
+
+  /* 手機斷點才變卡片。由 table.module.css 的 .mobileCardRow 以 `composes:` 取用。 */
+  .mobileCard {
+    border: var(--border-width-hairline) solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-card);
+    box-shadow: var(--shadow-xs);
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1024px) {
+  .container {
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+  }
+}

@@ -1,0 +1,43 @@
+# 開發環境: 原始碼 bind mount, 改了直接生效。
+#
+# 後端逐一列出目錄而不是掛整個 apps/api: 整包會遮掉 image 裡的 .venv。
+# compose 合併 volumes 是附加, api 與 worker 在 base 掛的 uploads 會保留。
+x-api-source: &api-source
+  - ../../apps/api/app:/app/app
+  - ../../apps/api/modules:/app/modules
+  - ../../apps/api/shared:/app/shared
+  - ../../apps/api/migrations:/app/migrations
+
+services:
+  migrate:
+    volumes: *api-source
+
+  api:
+    volumes: *api-source
+
+  worker:
+    volumes: *api-source
+
+  web:
+    build:
+      target: dev
+    volumes:
+      # 與 api 相反, 整包掛: Next 的根目錄慣例檔 (proxy.ts 這類) 逐一列出會漏。
+      - ../../apps/web:/app
+      # 具名 volume 遮住主機的 node_modules 與 .next 快取。
+      - web_node_modules:/app/node_modules
+      - web_next_cache:/app/.next
+
+  nginx:
+    # `make start lan` 改成 0.0.0.0, 讓手機從區網連進來測試。
+    ports: !override
+      - ${DEV_BIND_ADDRESS:-127.0.0.1}:${SYSTEM_PORT:?}:80
+    volumes: !override
+      - ../nginx/default.dev.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ../nginx/snippets:/etc/nginx/snippets:ro
+
+volumes:
+  web_node_modules:
+    name: ${COMPOSE_PROJECT_NAME:?}_${MODE:?}_web_node_modules
+  web_next_cache:
+    name: ${COMPOSE_PROJECT_NAME:?}_${MODE:?}_web_next_cache

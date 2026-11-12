@@ -1,0 +1,20 @@
+/* 這個專案的外觀: 覆寫 `shared/ui/styles/tokens.css` 的設計變數。
+ *
+ * 只寫要改的那幾個, 沒寫的沿用 tokens.css 的預設值。左手邊的名字是 UI kit 與模組 CSS 共用的
+ * 契約, 不要自創新名字 —— 需要新的變數時加進 tokens.css (給預設值), 再在這裡覆寫。
+ * 導入 Design System 時把右手邊改成 DS 提供的變數即可 (`--color-primary: var(--ds-brand-500);`)。
+ *
+ * 底色 (`--color-bg-app`) 改了要同步 `app/manifest.ts` 的 `theme_color` (JSON 吃不到 var())。
+ *
+ * **預設值由這支自己載入, 不要在 layout 另外 import tokens.css**: 兩支分開 import 時, bundler
+ * 不保證 tokens.css 排在前面 (dev 會併成一支但順序可能顛倒, production 拆成兩支看 <link> 的
+ * 順序), 同樣是 `:root` 的宣告誰在後面誰贏, 覆寫會安靜失效。寫在同一支裡, 順序就固定了。 */
+
+@import "../shared/ui/styles/tokens.css";
+
+:root {
+  /* 例: --color-primary: #818CF8; */
+
+  /* 內容區撐滿外殼給的寬度, 不在寬螢幕上置中留白。列表頁、表單頁 (含設定頁) 都吃這一個。 */
+  --container-wide: 100%;
+}
