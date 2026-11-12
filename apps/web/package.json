@@ -66,5 +66,21 @@
   "allowScripts": {
     "fsevents": true,
     "unrs-resolver": true
+  },
+  "//overrides": [
+    "minimatch: GHSA-g3hv-75wg-m249 影響 >=7 <11.0.1, 10.x 沒有修正版, 而 eslint 這一支宣告的範圍是 ^10。",
+    "只覆寫受影響的這三個套件: 其他套件用的 3.x 與 5.x 不在範圍內, 一起換會壞。",
+    "移除條件: `npm view eslint dependencies.minimatch` 放寬到 ^11。"
+  ],
+  "overrides": {
+    "eslint": {
+      "minimatch": "^11.0.8"
+    },
+    "@eslint/config-array": {
+      "minimatch": "^11.0.8"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.8"
+    }
   }
 }
