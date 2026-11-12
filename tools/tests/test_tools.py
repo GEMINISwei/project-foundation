@@ -180,14 +180,14 @@ def test_a_failed_backup_resumes_services_but_a_failed_restore_leaves_them_stopp
 PREPARE = "from tools.__main__ import prepare_streams; prepare_streams(); "
 
 
-def run_python(code: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # type: ignore[call-overload]
+def run_python(code: str, answer: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         [sys.executable, "-c", PREPARE + code],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=True,
-        **kwargs,
+        input=answer,
     )
 
 
@@ -203,7 +203,7 @@ def test_a_command_does_not_swallow_the_script_that_runs_it():
 
 def test_a_piped_answer_still_reaches_the_confirmation_prompt():
     code = "from tools.env import confirm; confirm('確定？'); print('confirmed')"
-    result = run_python(code, input="y\n")
+    result = run_python(code, answer="y\n")
     assert result.stdout.endswith("confirmed\n")
 
 
