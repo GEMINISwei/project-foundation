@@ -4,7 +4,8 @@
 
 - **單機 Docker Compose，在主機的 reverse proxy 後面**：HTTPS、網域、同主機多套系統的分流由主機那層處理。
 - **只上線發版的 tag**：正式環境的 `make start` 只認停在 `v<版號>` tag 上的 checkout。
-- **migration 失敗就不切換服務**：先單獨跑一次 migrate，成功才換掉線上的容器。
+- **新舊程式不同時服務**：升版時先停掉對外入口與舊版，才跑 migration、啟動新版；失敗就停在維護狀態，
+  不讓不確定的版本接流量。
 - **由 GitHub environment 決定部署到哪裡**：一個 environment 是一套系統，新增一套不必改 workflow。
 - **部署前一定備份**，還原前也一定先備份一次。
 - **主機上放整份 repo**：維運指令（備份、還原、檢查）跟著版本走，主機與開發機用同一套。

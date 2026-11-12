@@ -1,7 +1,7 @@
 /**
  * `resolveLocale` 的行為必須與後端 `resolve_language()` 一致。
  *
- * 這裡的案例刻意與 `apps/api/tests/shared/test_language.py` 的表格相同 ——
+ * 這裡的案例刻意與 `apps/api/tests/shared/test_i18n.py` 的表格相同 ——
  * 兩邊分頭演化的話, 症狀是「UI 是中文但錯誤訊息是英文」, 而且只在特定瀏覽器設定下重現。
  */
 

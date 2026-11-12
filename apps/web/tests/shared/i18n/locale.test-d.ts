@@ -9,9 +9,8 @@
  * - 前端多列了一個後端不認得的語系 → 選了之後後端一律回退預設語系, UI 與訊息語言不一致
  *
  * `satisfies readonly Language[]` 只擋得住後者, 所以這裡補上雙向的可指派性斷言。
- * 手法同 `tests/shared/api/contract.test-d.ts`。
  *
- * 驗證方式: 在後端 `shared/http/errors.py` 的 `Language` 加一個成員、跑 `make gen-types`,
+ * 驗證方式: 在後端 `shared/i18n.py` 的 `Language` 加一個成員、跑 `make gen-types`,
  * 底下第一行就會編譯失敗。
  */
 

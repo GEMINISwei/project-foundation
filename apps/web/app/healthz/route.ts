@@ -1,7 +1,7 @@
-// Docker healthcheck 的探活端點 (infra/docker/docker-compose.yml 的 web service)。
+// Docker healthcheck 的探活端點 (infra/compose/compose.yml 的 web service)。
 //
 // 刻意不碰後端: 這裡只回答「Next.js 伺服器還在回應嗎」。**不要改成探 `/login`** ——
-// 那一頁會 server-render, 日後只要它多打一支 API, 就等於每 10 秒多一次
+// 那一頁會 server-render, 日後只要它多打一支 API, 就等於每 30 秒多一次
 // API + 資料庫查詢; 而且 api 一有狀況 web 就跟著被判定不健康 —— api 自己已經有 healthcheck,
 // `depends_on: api: service_healthy` 也已經表達了依賴, web 再重複判一次只會讓故障範圍
 // 看起來比實際大。
