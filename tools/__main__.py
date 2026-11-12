@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+import io
+import os
 import subprocess
 import sys
 
@@ -25,6 +27,23 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "e2e": ("e2e", "瀏覽器測試：up、test、grep、down、check"),
     "release": ("release", "準備發版：make release <版號>"),
 }
+
+
+def prepare_streams() -> None:
+    """讓指令在 ssh、CI 這類沒有終端機的地方, 行為與在終端機裡一樣。"""
+    # 輸出被接走時 Python 整塊緩衝, 子行程的輸出會跑到自己的訊息前面。
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(line_buffering=True)
+    if sys.stdin is None or sys.stdin.isatty():
+        return
+    # 子行程不繼承 stdin: 部署腳本經 ssh 的 stdin 交給 bash 逐行執行, 被子行程 (docker compose
+    # run、docker run -i) 讀走的話, 後面的步驟不會執行也不會報錯。自己的確認提示改讀另一個
+    # 不會被繼承的 fd; 真的要餵資料給子行程的地方都明確指定 stdin。
+    # 這個檔案物件跟著行程活到結束, 不關閉。
+    sys.stdin = open(os.dup(0), encoding=sys.stdin.encoding, errors=sys.stdin.errors)
+    with open(os.devnull) as devnull:
+        os.dup2(devnull.fileno(), 0)
 
 
 def print_help() -> None:
@@ -60,4 +79,5 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    prepare_streams()
     sys.exit(main(sys.argv[1:]))

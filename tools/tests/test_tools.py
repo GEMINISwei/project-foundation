@@ -1,11 +1,14 @@
 """make 指令裡會刪檔、會決定能不能部署的那幾段邏輯。"""
 
+import shlex
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 from tools import backups, compose
-from tools.commands import check, release
-from tools.env import parse_env_file
+from tools.commands import check, doctor, logs, release
+from tools.env import REPO_ROOT, parse_env_file
 
 
 def touch(directory: Path, *names: str) -> None:
@@ -171,3 +174,76 @@ def test_a_failed_backup_resumes_services_but_a_failed_restore_leaves_them_stopp
     with pytest.raises(RuntimeError), compose.paused(ENV, ("nginx",), resume_on_failure=False):
         raise RuntimeError("restore failed")
     assert docker_calls == [("stop", "app-nginx")]
+
+
+# 用另一個行程跑: 進入點會動到行程自己的 stdin 與輸出, 不能在測試的行程裡做。
+PREPARE = "from tools.__main__ import prepare_streams; prepare_streams(); "
+
+
+def run_python(code: str, answer: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-c", PREPARE + code],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+        input=answer,
+    )
+
+
+def test_a_command_does_not_swallow_the_script_that_runs_it():
+    # 部署腳本經 ssh 的 stdin 交給 bash 逐行執行: 子行程讀了 stdin, 後面的步驟就消失而且不報錯。
+    child = "import subprocess; subprocess.run(['cat'], stdout=subprocess.DEVNULL)"
+    script = f"set -e\n{sys.executable} -c {shlex.quote(PREPARE + child)}\necho AFTER\n"
+    result = subprocess.run(
+        ["bash", "-s"], input=script, cwd=REPO_ROOT, capture_output=True, text=True, check=True
+    )
+    assert result.stdout == "AFTER\n"
+
+
+def test_a_piped_answer_still_reaches_the_confirmation_prompt():
+    code = "from tools.env import confirm; confirm('確定？'); print('confirmed')"
+    result = run_python(code, answer="y\n")
+    assert result.stdout.endswith("confirmed\n")
+
+
+def test_messages_come_out_in_the_order_things_happened():
+    # 輸出被接走時 (ssh、CI) Python 預設整塊緩衝, 子行程的輸出會跑到前面。
+    result = run_python("import subprocess; print('first'); subprocess.run(['echo', 'second'])")
+    assert result.stdout == "first\nsecond\n"
+
+
+JOURNAL_DENIED = subprocess.CompletedProcess(
+    args=[],
+    returncode=0,
+    stdout="-- No entries --\n",
+    stderr=(
+        "Hint: You are currently not seeing messages from other users and the system.\n"
+        "      Users in groups 'adm', 'systemd-journal' can see all messages.\n"
+    ),
+)
+JOURNALD_ENV = {"COMPOSE_PROJECT_NAME": "app", "MODE": "production", "LOG_DRIVER": "journald"}
+
+
+@pytest.fixture
+def unreadable_journal(monkeypatch):
+    monkeypatch.setattr(logs.shutil, "which", lambda _name: "/usr/bin/journalctl")
+    monkeypatch.setattr(logs.subprocess, "run", lambda *_args, **_kwargs: JOURNAL_DENIED)
+    monkeypatch.setattr(logs, "load_env", lambda: JOURNALD_ENV)
+
+
+@pytest.mark.parametrize("args", [["trace", "58143613783be4fe"], ["errors"]])
+def test_logs_say_so_when_the_journal_cannot_be_read(unreadable_journal, capsys, args):
+    # 讀不到與「沒有紀錄」要分得出來: 後者會讓人以為沒事。
+    with pytest.raises(SystemExit):
+        logs.run("logs", args)
+    captured = capsys.readouterr()
+    assert "systemd-journal" in captured.err
+    assert "找不到" not in captured.err
+    assert "沒有錯誤" not in captured.out
+
+
+def test_doctor_reports_a_journal_it_cannot_read(unreadable_journal, monkeypatch):
+    monkeypatch.setattr(doctor, "results", [])
+    doctor.check_journal(JOURNALD_ENV)
+    assert [(status, name) for status, name, _ in doctor.results] == [("錯誤", "log 查詢")]

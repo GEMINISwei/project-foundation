@@ -392,6 +392,8 @@ jobs:
           fi
       # 腳本經 SSH 的 stdin 送過去 (bash -s), token 不會出現在任一端的指令列 (ps 看得到)。
       # 值一律 %q 轉義後才拼進腳本, 遠端固定用 bash 解讀, 不受部署帳號的登入 shell 影響。
+      # 整段包在 { } 裡: bash 會先讀完整段才開始執行。逐行讀的話, 中途任何一個讀 stdin 的指令
+      # 都會把剩下的步驟讀走, 後面不執行也不報錯。
       #
       # 主機上拉 image 用的是這個 job 的 GITHUB_TOKEN: job 結束就失效, 主機不必存長期的
       # registry 憑證。登入資訊寫在這次部署自己的暫存目錄 (DOCKER_CONFIG), 結束就刪:
@@ -435,6 +437,7 @@ jobs:
           # 失敗時由 ERR trap 印成 ::error::, 經 ssh 的 stdout 回到 runner, 不必點進 log 就知道停在哪。
           # ssh 本身連不上時以 255 結束, 主機端的 trap 沒機會跑, 由這一端補上。
           {
+            echo '{'
             echo 'set -euo pipefail'
             echo 'step="準備部署目錄"'
             echo "trap 'echo \"::error::\${step}失敗\"' ERR"
@@ -461,6 +464,7 @@ jobs:
               "label=org.opencontainers.image.source=${IMAGE_SOURCE}"
             printf 'make backup prune %q || echo "::warning::清理舊備份失敗，請上主機手動 make backup prune"\n' \
               "${BACKUP_KEEP}"
+            echo '}'
           } | ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" -o BatchMode=yes \
                 "${DEPLOY_USER}@${DEPLOY_HOST}" 'bash -s' || {
             status=$?

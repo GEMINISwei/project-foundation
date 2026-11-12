@@ -6,12 +6,14 @@
     make logs errors [分鐘]       最近 N 分鐘 (預設 60) 的錯誤與警告
 
 request id 顯示在錯誤畫面上, 也在回應的 X-Request-ID 標頭裡。
-LOG_DRIVER=journald 時讀主機的 journald, 重建容器之前的紀錄也查得到。
+LOG_DRIVER=journald 時讀主機的 journald, 重建容器之前的紀錄也查得到; 帳號要在 systemd-journal 群組。
 """
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -23,6 +25,27 @@ TRACED_SERVICES = ("nginx", "web", "api", "worker")
 REQUEST_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 # api 與 worker 寫 JSON (level 欄位), nginx 的錯誤 log 帶 [error]。
 PROBLEM = re.compile(r'"level": ?"(warning|error|critical)"|\[(error|crit|alert|emerg)\]')
+# journalctl 沒有權限時照樣以 0 結束, 只在 stderr 留這兩種提示 (LC_ALL=C 的原文)。
+JOURNAL_DENIED = ("not seeing messages", "insufficient permissions")
+
+
+def journal_problem() -> str:
+    """讀不到 journald 的原因; 讀得到回傳空字串。讀不到與「沒有紀錄」要分得出來。"""
+    if shutil.which("journalctl") is None:
+        return "LOG_DRIVER=journald，但這台機器沒有 journalctl"
+    result = subprocess.run(
+        ["journalctl", "--no-pager", "-n", "0"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "LC_ALL": "C"},
+    )
+    if result.returncode != 0 or any(hint in result.stderr for hint in JOURNAL_DENIED):
+        return (
+            "這個帳號讀不到系統的 journal：用有 sudo 的帳號執行 "
+            "`sudo usermod -aG systemd-journal <這個帳號>`，重新登入後再試"
+        )
+    return ""
 
 
 def read_logs(env: dict[str, str], service: str, since: str | None) -> list[str]:
@@ -52,6 +75,9 @@ def search(env: dict[str, str], match: re.Pattern[str], since: str | None) -> in
 
 def run(_name: str, args: list[str]) -> None:
     env = load_env()
+    searching = bool(args) and args[0] in ("trace", "errors")
+    if searching and log_driver(env) == "journald" and (problem := journal_problem()):
+        fail(problem)
     if not args:
         compose(env, "logs", "--follow", "--tail", "100")
     elif args[0] == "trace" and len(args) == 2:
