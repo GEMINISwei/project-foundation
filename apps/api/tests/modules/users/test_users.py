@@ -3,7 +3,7 @@
 import pytest
 from sqlalchemy import text
 
-from modules.users import service
+from modules.roles.public import get_roles
 from shared.auth import passwords
 from shared.db.session import engine
 from tests.helpers import (
@@ -247,15 +247,14 @@ async def test_disable_user_with_concurrent_revoke_keeps_auth_version_increasing
     admin = await admin_headers(client)
     first = await create_user(client, admin, "first")
     second = await create_user(client, admin, "second")
-    original_get_roles = service.get_roles
 
     async def get_roles_then_revoke(role_ids):
         # 管理者讀完帳號之後、寫入之前, 對方登出 (另一個請求把版本加一)。
-        roles = await original_get_roles(role_ids)
+        roles = await get_roles(role_ids)
         await execute("UPDATE users SET auth_version = auth_version + 1 WHERE id = :id", id=target)
         return roles
 
-    monkeypatch.setattr(service, "get_roles", get_roles_then_revoke)
+    monkeypatch.setattr("modules.users.service.get_roles", get_roles_then_revoke)
     version = "SELECT auth_version FROM users WHERE id = :id"
 
     target = first["id"]
