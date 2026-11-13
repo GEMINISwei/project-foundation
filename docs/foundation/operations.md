@@ -49,7 +49,7 @@ web 伺服器端的錯誤與**瀏覽器端沒被接住的錯誤**（`event: clie
 | 某個操作失敗 | 錯誤訊息裡的 request id → `make logs trace` |
 | 登入被擋（429） | 限流：同一個 IP 加帳號 5 分鐘 10 次。所有人都被擋時檢查主機有沒有送 `X-Real-IP` |
 | 排程沒有執行 | `make logs worker`、`make jobs list`；手動觸發 `make jobs run <任務名稱>` |
-| api 週期性重啟 | 記憶體上限（正式環境 api、web、worker 各 512M） |
+| 服務週期性重啟，或 api 的行程反覆被補回來 | 記憶體上限（[正式環境的上限](#擴充)）：`docker inspect --format '{{.State.OOMKilled}}' <容器>` 是 `true` 就是被 OOM kill，`docker stats` 看當下用量。api 開多個行程時被 kill 的只有其中一個行程，容器不會重啟，log 裡會看到行程重新啟動 |
 
 ### log 保留多久
 
@@ -105,10 +105,20 @@ make db superuser
 
 ### 擴充
 
-- **api 的行程數**：`.env` 的 `API_WORKERS`。限流計數放在 PostgreSQL，可以直接調高。
-- **資料庫連線**：每個行程各有一個連線池（預設 5 加 10）。所有行程加起來不要超過 PostgreSQL 的 `max_connections`（預設 100）。
-- **worker**：一個容器依序執行任務。要平行處理時在 `infra/compose/compose.yml` 多加一個 worker 服務
-  （換一個容器名稱），取任務與排程都不會重複。
+- **api 的行程數**：`.env` 的 `API_PROCESSES`，預設 1 就夠：api 是 async 的，一個行程就能同時處理很多請求，
+  密碼雜湊也在執行緒裡跑。吃 CPU 的工作交給[背景任務](jobs.md#什麼時候用)，不靠加行程。
+  - **調高的時機**：尖峰時 api 的 CPU 長時間接近 100%（一個行程只用得到一顆核心）、主機還有閒置的核心、
+    資料庫不是瓶頸。上限是主機的核心數。
+  - **調高也沒用**：慢在資料庫（行程變多，連線也變多）、程式裡有阻塞的呼叫（每個行程照樣會卡）、
+    慢在背景任務（那是 worker 的事）、記憶體不夠。
+  - **記憶體上限自動跟著調整**：每個行程各載入一份完整的應用程式，所以 1 個行程 512M，每多一個加 256M。
+    範本本身在 200 個同時連線下的尖峰：1 個行程 93M、2 個 217M、4 個 373M（每多一個約 80M）；
+    其餘留給專案自己的模組與資料量。
+- **worker 的份數**：`.env` 的 `WORKER_REPLICAS`。每一份都做一樣的事，任務可以並行處理，取任務與排程都不會重複。
+- **資料庫連線**：每個行程（api 的每個行程、每一份 worker）各有一個連線池，最多 15 條。PostgreSQL 預設 100 條，
+  留 10 條給維運，所以 `API_PROCESSES` 與 `WORKER_REPLICAS` 加起來最多 6，超過時 `make start` 會拒絕啟動。
+- **正式環境的記憶體上限**：postgres 1G，api 依行程數，worker 每一份 512M，web 512M；理由寫在
+  `infra/compose/compose.prod.yml`。上限不是預留，但所有上限加起來要小於主機的記憶體，這層保護才成立。
 
 ## 主機的 reverse proxy
 

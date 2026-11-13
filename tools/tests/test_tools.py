@@ -141,10 +141,12 @@ def test_a_service_is_ready_only_when_running_and_past_its_healthcheck():
 
 @pytest.fixture
 def docker_calls(monkeypatch):
-    """假裝 nginx 與 worker 在執行, 記下對 docker 下的 stop / start。"""
+    """假裝 web 以外的容器都在執行, 記下對 docker 下的 stop / start。"""
     calls: list[tuple[str, str]] = []
-    monkeypatch.setattr(compose, "container_running", lambda _env, name: name != "web")
-    monkeypatch.setattr(compose, "wait_until_ready", lambda _env, _services: {})
+    monkeypatch.setattr(
+        compose, "running_containers", lambda: {"app-nginx", "app-worker-1", "app-worker-2"}
+    )
+    monkeypatch.setattr(compose, "wait_for_containers", lambda _names: {})
     monkeypatch.setattr(
         compose.subprocess, "run", lambda command, **_: calls.append((command[1], command[2]))
     )
@@ -159,10 +161,80 @@ def test_paused_services_come_back_in_reverse_order_and_stopped_ones_stay_stoppe
         pass
     assert docker_calls == [
         ("stop", "app-nginx"),
-        ("stop", "app-worker"),
-        ("start", "app-worker"),
+        ("stop", "app-worker-1"),
+        ("start", "app-worker-1"),
         ("start", "app-nginx"),
     ]
+
+
+def test_paused_services_cover_every_worker_replica(docker_calls):
+    # 備份時有一份 worker 沒停, 資料庫與上傳的檔案就不是同一個時間點。
+    with compose.paused({**ENV, "WORKER_REPLICAS": "2"}, ("worker",), resume_on_failure=True):
+        pass
+    assert docker_calls == [
+        ("stop", "app-worker-1"),
+        ("stop", "app-worker-2"),
+        ("start", "app-worker-2"),
+        ("start", "app-worker-1"),
+    ]
+
+
+def test_readiness_waits_for_every_worker_replica(monkeypatch):
+    states = {"app-api": "healthy", "app-worker-1": "healthy", "app-worker-2": "starting"}
+    monkeypatch.setattr(compose, "container_state", lambda name: states.get(name, "missing"))
+    env = {**ENV, "WORKER_REPLICAS": "3"}
+    assert compose.wait_until_ready(env, ("api", "worker"), timeout=0) == {
+        "app-worker-2": "starting",
+        "app-worker-3": "missing",
+    }
+
+
+def test_logs_include_every_worker_replica(monkeypatch):
+    read: list[str] = []
+
+    def fake_run(command, **_kwargs):
+        read.append(command[-1])
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(logs.subprocess, "run", fake_run)
+    env = {**ENV, "MODE": "production", "WORKER_REPLICAS": "2"}
+    logs.read_logs(env, "worker", None)
+    assert read == ["app-worker-1", "app-worker-2"]
+
+
+def test_api_memory_limit_is_512m_for_one_process():
+    assert compose.api_memory_limit({"API_PROCESSES": "1"}) == "512M"
+
+
+def test_api_memory_limit_grows_256m_per_extra_process():
+    assert compose.api_memory_limit({"API_PROCESSES": "2"}) == "768M"
+    assert compose.api_memory_limit({"API_PROCESSES": "4"}) == "1280M"
+
+
+def test_api_memory_limit_defaults_to_one_process():
+    assert compose.api_memory_limit({}) == "512M"
+    assert compose.api_memory_limit({"API_PROCESSES": ""}) == "512M"
+
+
+def test_compose_passes_api_memory_limit(monkeypatch):
+    seen: dict[str, str] = {}
+    monkeypatch.setattr(compose.subprocess, "run", lambda _command, *, env, **_: seen.update(env))
+    compose.compose({**ENV, "MODE": "production", "API_PROCESSES": "3"}, "config")
+    assert seen["API_MEMORY_LIMIT"] == "1024M"
+
+
+@pytest.mark.parametrize("name", ["API_PROCESSES", "WORKER_REPLICAS"])
+@pytest.mark.parametrize("value", ["0", "-1", "two", "1.5"])
+def test_invalid_process_or_replica_count_is_refused(name, value):
+    with pytest.raises(SystemExit):
+        compose.check_capacity({name: value})
+
+
+def test_too_many_database_connections_are_refused():
+    # 每個行程的連線池最多 15 條, PostgreSQL 預設 100 條還要留給維運。
+    compose.check_capacity({"API_PROCESSES": "4", "WORKER_REPLICAS": "2"})
+    with pytest.raises(SystemExit):
+        compose.check_capacity({"API_PROCESSES": "4", "WORKER_REPLICAS": "3"})
 
 
 def test_a_failed_backup_resumes_services_but_a_failed_restore_leaves_them_stopped(docker_calls):
@@ -241,6 +313,15 @@ def test_logs_say_so_when_the_journal_cannot_be_read(unreadable_journal, capsys,
     assert "systemd-journal" in captured.err
     assert "找不到" not in captured.err
     assert "沒有錯誤" not in captured.out
+
+
+def test_doctor_checks_every_worker_replica(monkeypatch):
+    lines = ["api\trunning\thealthy", "worker\trunning\thealthy", "worker\texited\t"]
+    output = subprocess.CompletedProcess([], 0, stdout="\n".join(lines) + "\n", stderr="")
+    monkeypatch.setattr(doctor, "compose", lambda *_args, **_kwargs: output)
+    monkeypatch.setattr(doctor, "results", [])
+    assert not doctor.check_services(ENV)
+    assert ("錯誤", "服務 worker") in [(status, name) for status, name, _ in doctor.results]
 
 
 def test_doctor_reports_a_journal_it_cannot_read(unreadable_journal, monkeypatch):

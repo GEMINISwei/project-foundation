@@ -11,7 +11,7 @@ x-api: &api
     JWT_SECRET_KEY: ${JWT_SECRET_KEY:?}
     EXPIRE_HOURS: ${EXPIRE_HOURS:?}
     TIMEZONE: ${TIMEZONE:-Asia/Taipei}
-    API_WORKERS: ${API_WORKERS:-1}
+    API_PROCESSES: ${API_PROCESSES:-1}
     SENTRY_DSN: ${SENTRY_DSN:-}
 
 # 啟動期間每秒檢查, 之後放慢; 單機 compose 的 healthcheck 只用在啟動順序與部署閘門。
@@ -74,9 +74,12 @@ services:
       - "8000"
 
   # 背景工作與排程。與 api 同一個 image, 佇列放在 PostgreSQL。
+  # 多份時每一份都做一樣的事, 同一個任務只有一份拿得到。容器名稱由 compose 依序編號
+  # (<專案>-worker-<序號>): 指定 container_name 就不能開多份。
   worker:
     <<: *api
-    container_name: ${COMPOSE_PROJECT_NAME:?}-worker
+    deploy:
+      replicas: ${WORKER_REPLICAS:-1}
     command: ["python", "-m", "app.worker"]
     volumes:
       - uploads:/app/uploads
@@ -87,7 +90,8 @@ services:
       <<: *healthcheck
       # worker 每 15 秒確認資料庫連得上並更新這個檔案; 超過一分鐘沒更新就是卡住或連不上。
       test: ["CMD", "bash", "-c", "test $$(( $$(date +%s) - $$(stat -c %Y /tmp/worker-heartbeat) )) -lt 60"]
-    # 收到 SIGTERM 會做完手上的任務再結束, 要比單一任務的時間上限長。
+    # 收到 SIGTERM 會做完手上的任務再結束: 單一任務的時間上限 (shared/jobs 的 MAX_TIMEOUT_SECONDS)
+    # 加 30 秒寫入完成狀態。
     stop_grace_period: 330s
     restart: always
 

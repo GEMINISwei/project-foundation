@@ -15,6 +15,7 @@ import subprocess
 from tools.compose import (
     LONG_RUNNING,
     WRITERS,
+    check_capacity,
     compose,
     describe,
     entry_responds,
@@ -79,6 +80,7 @@ def run(_name: str, args: list[str]) -> None:
     env = load_env()
     require_env(env, "COMPOSE_PROJECT_NAME", "SYSTEM_PORT")
     mode = require_mode(env)
+    check_capacity(env)
     if lan and mode != "development":
         fail("正式環境不能用 lan：nginx 信任上一層送來的 X-Real-IP，對外開放就能冒充任何 IP")
     extra = {"DEV_BIND_ADDRESS": "0.0.0.0" if lan else "127.0.0.1"}  # noqa: S104

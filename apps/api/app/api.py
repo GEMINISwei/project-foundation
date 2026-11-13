@@ -13,7 +13,7 @@ if __name__ == "__main__":
         port=8000,
         # reload 與多行程不能並用; 開發環境固定單一行程。
         reload=development,
-        workers=None if development else settings.api_workers,
+        workers=None if development else settings.api_processes,
         # log 的格式由 shared/logging.py 統一設定, 請求紀錄由平台的 middleware 負責。
         log_config=None,
         access_log=False,

@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import sys
 
-from tools.compose import SERVICES, compose, container, log_driver
+from tools.compose import SERVICES, compose, containers, log_driver
 from tools.env import fail, load_env
 
 USAGE = (__doc__ or "").split("\n\n")[1]
@@ -49,16 +49,23 @@ def journal_problem() -> str:
 
 
 def read_logs(env: dict[str, str], service: str, since: str | None) -> list[str]:
-    """一個服務的 log, 每行前面帶 docker 的時間戳 (RFC 3339, 可以直接字串排序)。"""
-    name = container(env, service)
-    if log_driver(env) == "journald":
-        command = ["journalctl", f"CONTAINER_NAME={name}", "--no-pager", "-o", "short-iso-precise"]
+    """一個服務所有容器的 log, 每行前面帶 docker 的時間戳 (RFC 3339, 可以直接字串排序)。"""
+    lines: list[str] = []
+    for name in containers(env, service):
+        if log_driver(env) == "journald":
+            command = [
+                "journalctl",
+                f"CONTAINER_NAME={name}",
+                "--no-pager",
+                "-o",
+                "short-iso-precise",
+            ]
+        else:
+            command = ["docker", "logs", "--timestamps", name]
         command += ["--since", since] if since else []
-    else:
-        command = ["docker", "logs", "--timestamps", name]
-        command += ["--since", since] if since else []
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
-    return (result.stdout + result.stderr).splitlines()
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        lines += (result.stdout + result.stderr).splitlines()
+    return lines
 
 
 def search(env: dict[str, str], match: re.Pattern[str], since: str | None) -> int:

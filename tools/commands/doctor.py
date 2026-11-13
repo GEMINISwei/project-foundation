@@ -73,18 +73,23 @@ def check_services(env: dict[str, str]) -> bool:
     result = compose(
         env, "ps", "--all", "--format", "{{.Service}}\t{{.State}}\t{{.Health}}", capture=True
     )
-    states = {
-        line.split("\t")[0]: line.split("\t")[1:] for line in result.stdout.splitlines() if line
-    }
+    # worker 可以開多份: 同一個服務有多行, 每一份都要正常。
+    states: dict[str, list[tuple[str, str]]] = {}
+    for line in result.stdout.splitlines():
+        if line:
+            service, state, health = [*line.split("\t"), "", ""][:3]
+            states.setdefault(service, []).append((state, health))
     healthy = True
     for service in SERVICES:
-        state, health = (states.get(service) or ["不存在", ""])[:2]
-        if service == "migrate":
-            ok = state == "exited"
-            detail = "已完成" if ok else f"{state}（migration 沒有成功結束，見 make logs migrate）"
-        else:
-            ok = state == "running" and health in ("", "healthy")
-            detail = "執行中" if ok else f"{state} {health}".strip()
+        problems = []
+        for state, health in states.get(service) or [("不存在", "")]:
+            if service == "migrate":
+                if state != "exited":
+                    problems.append(f"{state}（migration 沒有成功結束，見 make logs migrate）")
+            elif not (state == "running" and health in ("", "healthy")):
+                problems.append(f"{state} {health}".strip())
+        ok = not problems
+        detail = "、".join(problems) or ("已完成" if service == "migrate" else "執行中")
         record("正常" if ok else "錯誤", f"服務 {service}", detail)
         healthy = healthy and ok
     return healthy

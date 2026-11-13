@@ -45,6 +45,11 @@ def current_job_id() -> uuid.UUID:
     return job_id
 
 
+# 部署時 worker 最多等 330 秒 (compose 的 stop_grace_period) 把手上的任務做完,
+# 留 30 秒寫入完成狀態。超過的任務會在完成之前被強制終止。
+MAX_TIMEOUT_SECONDS = 300
+
+
 @dataclass(frozen=True)
 class JobSpec:
     #: 全系統唯一, 慣例是 `<模組>.<動作>`。改名會讓已經排入的舊任務找不到處理函式。
@@ -52,7 +57,7 @@ class JobSpec:
     handler: JobHandler
     #: 含第一次在內最多執行幾次; 每次失敗後等待的時間加倍 (30 秒起, 上限 1 小時)。
     max_attempts: int = 3
-    #: 單次執行的時間上限。要小於 worker 的 stop_grace_period (330 秒)。
+    #: 單次執行的時間上限, 最多 `MAX_TIMEOUT_SECONDS`。超過的工作拆成多個任務。
     timeout_seconds: int = 300
 
 

@@ -25,7 +25,7 @@ from shared import context
 from shared.db.base import utc_now
 from shared.db.session import engine, independent_session
 from shared.events import EventBus
-from shared.jobs import JobSpec, Schedule, running_job
+from shared.jobs import MAX_TIMEOUT_SECONDS, JobSpec, Schedule, running_job
 from shared.jobs.model import Job, JobStatus, ScheduleState
 from shared.logging import get_logger
 from shared.platform import unit_of_work
@@ -60,6 +60,11 @@ class Worker:
         for schedule in self.schedules:
             if not croniter.is_valid(schedule.cron):
                 raise RuntimeError(f"排程的 cron 運算式無效: {schedule.name}")
+        for spec in self.specs.values():
+            if spec.timeout_seconds > MAX_TIMEOUT_SECONDS:
+                raise RuntimeError(
+                    f"任務的時間上限不能超過 {MAX_TIMEOUT_SECONDS} 秒, 請拆成多個任務: {spec.name}"
+                )
 
     async def run(self, stop: asyncio.Event) -> None:
         log.info(
