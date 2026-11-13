@@ -110,7 +110,9 @@ class Worker:
 
     def last_fire_time(self, schedule: Schedule, now: datetime) -> datetime:
         """`now` 之前 (含) 最近一次應該觸發的時間。"""
-        local = now.astimezone(self.timezone)
+        # 加 1 秒讓剛好落在觸發時間的 now 也算進去; 先去掉毫秒: 不然 xx:59.5 會變成下一分鐘的
+        # xx:00.5, 算出還沒到的觸發時間, 排程就提早觸發了。
+        local = now.astimezone(self.timezone).replace(microsecond=0)
         fire: datetime = croniter(schedule.cron, local + timedelta(seconds=1)).get_prev(datetime)
         return fire.astimezone(now.tzinfo)
 

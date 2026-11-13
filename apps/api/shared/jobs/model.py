@@ -4,11 +4,11 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Index, Text, text
+from sqlalchemy import Index, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.db.base import Base, Entity, utc_now
+from shared.db.base import Base, Entity
 
 
 class JobStatus(StrEnum):
@@ -29,7 +29,9 @@ class Job(Entity):
     name: Mapped[str]
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     status: Mapped[str] = mapped_column(default=JobStatus.PENDING)
-    run_at: Mapped[datetime] = mapped_column(default=utc_now)
+    # 用資料庫的時間: worker 認領時比對的是資料庫的 now(), 用主機的時間寫入,
+    # 兩邊時鐘差一點點, 剛排入的任務就會認領不到。
+    run_at: Mapped[datetime] = mapped_column(default=func.now())
     attempts: Mapped[int] = mapped_column(default=0)
     # 排入當下從 JobSpec 抄一份: 回收卡住的任務時只靠這一列就能判斷, 不必認得所有任務定義。
     max_attempts: Mapped[int]
