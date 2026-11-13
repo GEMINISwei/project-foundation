@@ -14,8 +14,13 @@ function logged() {
   return vi.mocked(console.error).mock.calls.map(([line]) => JSON.parse(String(line)))
 }
 
+let testNumber = 0
+
 beforeEach(() => {
   state.headers.clear()
+  // 回報有每個來源的上限: 每個測試用自己的來源, 才不會吃到前一個測試用掉的額度。
+  testNumber += 1
+  state.headers.set("x-real-ip", `192.0.2.${testNumber}`)
   vi.spyOn(console, "error").mockImplementation(() => {})
 })
 

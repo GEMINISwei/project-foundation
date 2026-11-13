@@ -99,9 +99,21 @@ jobs:
           fi
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
       # 指定 refs/tags/: tag 不存在 (或填成 branch 名稱) 時在這裡就失敗。
-      - uses: actions/checkout@v7
+      # 完整歷史: 下面要確認這個 commit 在 main 上。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+      # 只有經過 PR 審查、合併進 main 的 commit 能上線。在 GitHub 網頁手動建 release 時 target 可以選
+      # 任何分支, tag 與版號對得上也擋不住; 回滾用的舊 tag 本來就在 main 上, 不受影響。
+      - name: tag 的 commit 在 main 上
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::${TAG} 指向的 commit 不在 main 上，不能部署（release 的 target 要選 main）"
+            exit 1
+          fi
       # 比對後端的 APP_VERSION (跟 tag 對齊的版號); CHANGELOG 與它一致由 CI 的
       # apps/api/tests/test_version.py 保證, 下面的 ci job 會跑到。
       - name: tag 與 APP_VERSION 一致
@@ -130,7 +142,7 @@ jobs:
     steps:
       # 挑選腳本取自這份 workflow 所在的 commit, 不是要部署的 tag: 回滾到比這個功能還舊的 tag
       # 時, 那個 tag 裡沒有這支腳本。
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github/scripts
       # 組名由腳本驗過格式 (小寫英數與 . _) 才寫進 GITHUB_OUTPUT; environment 名稱經 jq 轉成
@@ -193,7 +205,7 @@ jobs:
     outputs:
       passed: ${{ steps.check.outputs.passed }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github/scripts
       - name: main 上的 CI 結果
@@ -235,7 +247,7 @@ jobs:
       packages: ${{ steps.names.outputs.packages }}
       source: ${{ steps.names.outputs.source }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ needs.version.outputs.tag }}
       # GHCR 的名稱只收小寫, 帳號或 repo 名有大寫時直接用 github.repository 會被拒絕。
@@ -264,10 +276,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # 與 ci.yml 的 e2e job 共用 cache scope, 剛跑完的 CI 已經把層暖好了。
       # digest 給 deploy 用: 主機依 digest 拉, 拿到的一定是這次建的那份 (見 deploy 的說明)。
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         id: api
         with:
           context: apps/api
@@ -275,7 +287,7 @@ jobs:
           tags: ${{ steps.names.outputs.api-tags }}
           labels: org.opencontainers.image.source=${{ steps.names.outputs.source }}
           cache-from: type=gha,scope=api
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         id: web
         with:
           context: apps/web
@@ -304,12 +316,12 @@ jobs:
     steps:
       # 讀資料庫 revision 的腳本與 deploy-ssh.sh 用 workflow 自己這份: 主機上的 checkout 與要部署的
       # tag 都可能是還沒有它們的舊版。
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             tools
             .github/scripts
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ needs.version.outputs.tag }}
           path: target
@@ -367,7 +379,7 @@ jobs:
       packages: read
     steps:
       # deploy-ssh.sh 取自這份 workflow 所在的 commit, 理由同 targets: 回滾到的舊 tag 裡可能沒有它。
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github/scripts
       # 缺 secrets 時在這裡就停 (見腳本開頭)。
@@ -504,7 +516,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github/scripts
       # 這個 action 拿得到能刪 package 的 token, 釘在看過程式碼的 commit, tag 被改指向也不會跟著跑。

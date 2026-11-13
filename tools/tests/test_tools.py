@@ -237,6 +237,17 @@ def test_too_many_database_connections_are_refused():
         compose.check_capacity({"API_PROCESSES": "4", "WORKER_REPLICAS": "3"})
 
 
+def test_backup_directory_is_private_to_its_owner(backup_dir):
+    # 備份檔裡有密碼雜湊與 AUDIT: 主機上的其他帳號不該讀得到, 既有的目錄也要收緊。
+    backup_dir.chmod(0o755)
+    backups.ensure_private_dir()
+    assert backup_dir.stat().st_mode & 0o777 == 0o700
+
+    backup_dir.rmdir()
+    backups.ensure_private_dir()
+    assert backup_dir.stat().st_mode & 0o777 == 0o700
+
+
 def test_a_failed_backup_resumes_services_but_a_failed_restore_leaves_them_stopped(docker_calls):
     with pytest.raises(RuntimeError), compose.paused(ENV, ("nginx",), resume_on_failure=True):
         raise RuntimeError("backup failed")
