@@ -5,7 +5,7 @@
 
 - 不能停用自己、不能改自己的角色。
 - 超級管理者的帳號後台完全不能動 (只能用指令), 超級管理者角色也不能指派。
-- 非超級管理者只能管理權限不超過自己的帳號, 只能指派權限不超過自己的角色。
+- 非超級管理者只能管理權限不超過自己的帳號 (停用的角色也算), 只能指派權限不超過自己的角色。
 """
 
 import uuid
@@ -140,10 +140,9 @@ async def update_user(user_id: uuid.UUID, data: UserUpdate, *, actor: Identity) 
     user.nickname = data.nickname
     user.is_disabled = data.is_disabled
     await db().flush()
-    if newly_disabled:
-        await repository.revoke_sessions(user.id)
 
     if newly_disabled:
+        await repository.revoke_sessions(user.id)
         audit("user_disabled", user_id=user.id)
     if roles_changed:
         audit("user_roles_changed", user_id=user.id, role_ids=data.role_ids)
