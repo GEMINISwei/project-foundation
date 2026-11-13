@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from app.registry import ENABLED_MODULES
 from shared.db.session import db, independent_session
@@ -117,7 +117,7 @@ async def test_a_failing_job_is_retried_later_then_marked_failed(db_ready):
     assert "boom" in (first.last_error or "")
 
     async with independent_session() as session:
-        await session.execute(update(Job).values(run_at=datetime.now(UTC)))
+        await session.execute(update(Job).values(run_at=func.now()))
     await runner.run_next()
     final = await reload(job)
     assert (final.status, final.attempts) == (JobStatus.FAILED, 2)
@@ -145,7 +145,7 @@ async def test_the_job_id_a_handler_sees_is_the_same_on_every_retry(db_ready):
     runner = worker(JOB_ID)
     await runner.run_next()
     async with independent_session() as session:
-        await session.execute(update(Job).values(run_at=datetime.now(UTC)))
+        await session.execute(update(Job).values(run_at=func.now()))
     await runner.run_next()
     assert calls == [{"job_id": job.id}, {"job_id": job.id}]
     assert (await reload(job)).status == JobStatus.SUCCEEDED
@@ -192,6 +192,30 @@ async def test_a_new_schedule_does_not_backfill_past_runs(db_ready):
     runner = worker(RECORD, schedules=(Schedule(RECORD, cron="* * * * *"),))
     await runner.enqueue_due_schedules()
     assert await runner.run_next() is False
+
+
+def test_last_fire_time_in_last_second_before_fire_returns_previous_fire():
+    schedule = Schedule(RECORD, cron="* * * * *")
+    runner = worker(RECORD, schedules=(schedule,))
+    just_before = datetime(2026, 11, 13, 5, 44, 59, 500000, tzinfo=UTC)
+    just_after = datetime(2026, 11, 13, 5, 45, 0, 300000, tzinfo=UTC)
+    assert runner.last_fire_time(schedule, just_before) == datetime(2026, 11, 13, 5, 44, tzinfo=UTC)
+    assert runner.last_fire_time(schedule, just_after) == datetime(2026, 11, 13, 5, 45, tzinfo=UTC)
+
+
+async def test_new_schedule_seen_in_last_second_before_fire_does_not_fire(db_ready, monkeypatch):
+    just_before = datetime(2026, 11, 13, 5, 44, 59, 500000, tzinfo=UTC)
+    monkeypatch.setattr(worker_module, "utc_now", lambda: just_before)
+    await worker(RECORD, schedules=(Schedule(RECORD, cron="* * * * *"),)).enqueue_due_schedules()
+    async with independent_session() as session:
+        assert await session.scalar(select(func.count()).select_from(Job)) == 0
+
+
+async def test_enqueue_without_run_at_uses_database_clock(db_ready):
+    # 認領任務比對的是資料庫的時間: 用主機的時間寫入, 兩邊時鐘差一點點就會認領不到。
+    async with unit_of_work(BUS):
+        job = await enqueue(RECORD)
+        assert await db().scalar(select(Job.run_at == func.now()).where(Job.id == job.id))
 
 
 async def test_a_due_schedule_fires_once_even_with_several_workers(db_ready):
