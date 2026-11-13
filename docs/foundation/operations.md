@@ -62,11 +62,6 @@ web 伺服器端的錯誤與**瀏覽器端沒被接住的錯誤**（`event: clie
 - `json-file`：log 跟著容器走，每個服務最多 5 個 20MB 的檔案，**重建容器（每次部署）後舊的就消失**。
   部署前的備份會留一份當下的 log（`backups/*.logs.tar.gz`）。
 
-### 錯誤追蹤
-
-預設不送任何資料到第三方。要主動收到錯誤通知時，在 `.env` 設 `SENTRY_DSN`（Sentry 或相容的自架 GlitchTip），
-api 與 worker 的 error 等級以上的 log 會成為事件；不會帶使用者的 IP、cookie 或請求內容。
-
 ## 正式環境
 
 在部署主機上（需要 Docker、`make`、`python3`、`git`）：

@@ -218,4 +218,5 @@ raise ROLE_NAME_EXISTS()
 | `apps/web/config/routes.ts`、`config/shell/nav-icons.ts` | 移除 manifest 與圖示 |
 
 收尾先 `make gen-types` 再 `make check types`：前端還在用的已刪除端點或權限會變成編譯錯誤。
-資料表要另外新增一支 migration 刪除。`users` 與 `roles` 是核心模組，不移除。
+資料表要另外新增一支 migration 刪除。角色裡留著的那些權限值會在下一次 migrate 時清掉
+（`modules/roles/seed.py`），模組之後加回來要重新勾選。`users` 與 `roles` 是核心模組，不移除。

@@ -1,5 +1,9 @@
 import pytest
+from sqlalchemy import text
 
+from app.registry import ENABLED_MODULES
+from shared.db.session import engine
+from shared.platform import event_bus, unit_of_work
 from tests.helpers import admin_headers, create_role, scalar, user_with
 
 pytestmark = pytest.mark.integration
@@ -191,3 +195,25 @@ async def test_a_broken_cursor_is_a_client_error(client):
     headers = await admin_headers(client)
     response = await client.get("/api/roles", headers=headers, params={"cursor": "garbage"})
     assert (response.status_code, response.json()["code"]) == (400, "pagination.invalid_cursor")
+
+
+async def test_seed_role_with_removed_permission_drops_only_that_value(client):
+    admin = await admin_headers(client)
+    _, viewer = await user_with(client, admin, "viewer", ["roles:read"])
+    # 模組被移除之後的樣子: 角色裡留著 enum 已經沒有的權限值。
+    async with engine().begin() as connection:
+        await connection.execute(
+            text(
+                "UPDATE roles SET permissions = array_append(permissions, 'products:read') "
+                "WHERE name = 'viewer-role'"
+            )
+        )
+
+    async with unit_of_work(event_bus(ENABLED_MODULES)):
+        for module in ENABLED_MODULES:
+            for seeder in module.seeders:
+                await seeder()
+
+    me = await client.get("/api/users/me", headers=viewer)
+    assert (me.status_code, me.json().get("permissions")) == (200, ["roles:read"])
+    assert (await client.get("/api/roles", headers=viewer)).status_code == 200

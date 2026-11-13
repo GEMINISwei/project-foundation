@@ -11,25 +11,6 @@ from typing import Any
 
 import structlog
 
-from shared.settings import settings
-
-
-def init_error_tracking(release: str) -> None:
-    """設定了 SENTRY_DSN 才啟用 (Sentry 或相容的 GlitchTip)。error 等級以上的 log 會成為事件。
-
-    不送使用者資料 (IP、cookie、請求內容): 送不送第三方是專案的決定, 預設不送。
-    """
-    if not settings.sentry_dsn:
-        return
-    import sentry_sdk
-
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.mode,
-        release=f"{settings.project_name}@{release}",
-        send_default_pii=False,
-    )
-
 
 def configure_logging(*, json_output: bool) -> None:
     shared_processors: list[Any] = [

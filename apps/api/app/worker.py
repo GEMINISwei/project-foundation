@@ -4,17 +4,15 @@ import asyncio
 import signal
 
 from app.registry import ENABLED_MODULES
-from app.version import APP_VERSION
 from shared.db.session import start_engine, stop_engine
 from shared.jobs.worker import Worker
-from shared.logging import configure_logging, init_error_tracking
+from shared.logging import configure_logging
 from shared.platform import all_jobs, all_schedules, event_bus
 from shared.settings import settings
 
 
 async def main() -> None:
     configure_logging(json_output=settings.is_production)
-    init_error_tracking(APP_VERSION)
     start_engine()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
