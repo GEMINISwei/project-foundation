@@ -218,9 +218,7 @@ def test_api_memory_limit_defaults_to_one_process():
 
 def test_compose_passes_api_memory_limit(monkeypatch):
     seen: dict[str, str] = {}
-    monkeypatch.setattr(
-        compose.subprocess, "run", lambda _command, *, env, **_: seen.update(env)
-    )
+    monkeypatch.setattr(compose.subprocess, "run", lambda _command, *, env, **_: seen.update(env))
     compose.compose({**ENV, "MODE": "production", "API_PROCESSES": "3"}, "config")
     assert seen["API_MEMORY_LIMIT"] == "1024M"
 

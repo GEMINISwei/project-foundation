@@ -246,7 +246,7 @@ def test_an_invalid_cron_expression_is_rejected_at_startup():
 def test_job_timeout_over_grace_period_is_refused():
     # 部署時 worker 最多等 330 秒: 上限超過 300 秒的任務會在完成之前被強制終止。
     slow = JobSpec("tests.slow", record, timeout_seconds=301)
-    with pytest.raises(RuntimeError, match="tests.slow"):
+    with pytest.raises(RuntimeError, match=r"tests\.slow"):
         Worker((slow,), (), BUS)
 
 
