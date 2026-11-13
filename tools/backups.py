@@ -22,6 +22,12 @@ _PATTERN = re.compile(
 )
 
 
+def ensure_private_dir() -> None:
+    """備份檔裡有密碼雜湊與 AUDIT: 目錄只讓擁有者進入, 既有的目錄也一併收緊。"""
+    BACKUP_DIR.mkdir(exist_ok=True)
+    BACKUP_DIR.chmod(0o700)
+
+
 @dataclass(frozen=True)
 class Backup:
     path: Path

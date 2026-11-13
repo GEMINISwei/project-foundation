@@ -72,7 +72,7 @@ def save_logs(env: dict[str, str], path: Path) -> None:
 def backup_all(env: dict[str, str]) -> None:
     if not container_running(env, "postgres"):
         fail(f"{container(env, 'postgres')} 沒有在執行，請先 make start")
-    backups.BACKUP_DIR.mkdir(exist_ok=True)
+    backups.ensure_private_dir()
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stem = backups.BACKUP_DIR / f"{env['COMPOSE_PROJECT_NAME']}_v{app_version()}_{stamp}"
     dump, uploads = (stem.with_name(f"{stem.name}.{kind}") for kind in ("dump", "tar"))
