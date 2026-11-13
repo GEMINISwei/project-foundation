@@ -15,6 +15,7 @@ openapi                 把 OpenAPI 契約印到 stdout
 import asyncio
 import getpass
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -97,6 +98,12 @@ async def cmd_reset(_args: list[str]) -> None:
 # ── 帳號 ─────────────────────────────────────────────────────────────────────
 
 
+def hide_info_logs() -> None:
+    # AUDIT 已經寫進 audit_logs (要查就用 make db psql), exec 的輸出也不會進容器的 log,
+    # 印在終端機只是雜訊。WARNING 以上照常顯示: 資料表寫不進去的 audit_flush_failed 要讓人看到。
+    logging.getLogger().setLevel(logging.WARNING)
+
+
 def prompt(label: str, *, secret: bool = False) -> str:
     # 有終端機時密碼不回顯; 沒有 (自動化從 stdin 餵) 時逐行讀。密碼不從命令列參數取:
     # 那會留在 shell 歷史與 `ps` 的輸出裡。
@@ -110,6 +117,7 @@ def prompt(label: str, *, secret: bool = False) -> str:
 async def cmd_superuser(_args: list[str]) -> None:
     from modules.users.public import SuperAdminCreate, create_super_admin
 
+    hide_info_logs()
     interactive = sys.stdin.isatty()
     if interactive:
         print("建立超級管理者（此帳號擁有全部權限）")
@@ -133,6 +141,7 @@ async def cmd_superuser(_args: list[str]) -> None:
 async def cmd_revoke_sessions(_args: list[str]) -> None:
     from modules.users.public import revoke_all_sessions
 
+    hide_info_logs()
     async with platform_scope(ENABLED_MODULES):
         affected = await revoke_all_sessions()
     print(f"已讓 {affected} 位使用者的登入失效，所有人都要重新登入")

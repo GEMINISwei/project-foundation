@@ -12,7 +12,7 @@ import uuid
 
 from sqlalchemy.exc import IntegrityError
 
-from modules.roles.public import RoleSummary, effective_permissions, get_roles
+from modules.roles.public import RoleSummary, get_roles
 from shared.audit import audit
 from shared.auth import passwords
 from shared.auth.identity import Identity
@@ -57,7 +57,8 @@ async def _manageable(user_id: uuid.UUID, actor: Identity) -> tuple[User, list[R
     """取出要管理的對象, 並確認操作者有資格動他。"""
     user = found(await repository.get(user_id), USER_NOT_FOUND)
     roles = await get_roles(user.role_ids)
-    permissions = effective_permissions(roles)
+    # 停用的角色也算: 它日後可能恢復, 停用期間能動的帳號到時就成了提權。
+    permissions = frozenset(item for role in roles for item in role.permissions)
     if WILDCARD in permissions:
         raise SUPER_ADMIN_PROTECTED()
     if not _covers(actor, permissions):
@@ -138,9 +139,9 @@ async def update_user(user_id: uuid.UUID, data: UserUpdate, *, actor: Identity) 
         roles = await get_roles(data.role_ids)
     user.nickname = data.nickname
     user.is_disabled = data.is_disabled
-    if newly_disabled:
-        user.auth_version += 1
     await db().flush()
+    if newly_disabled:
+        await repository.revoke_sessions(user.id)
 
     if newly_disabled:
         audit("user_disabled", user_id=user.id)
@@ -155,8 +156,9 @@ async def disable_user(user_id: uuid.UUID, *, actor: Identity) -> UserInfo:
         raise CANNOT_CHANGE_SELF()
     if not user.is_disabled:
         user.is_disabled = True
-        user.auth_version += 1
         await db().flush()
+        # 由資料庫遞增: 用讀到的舊值加一, 會蓋掉同一時間的登出或改密碼, 讓撤銷過的登入復活。
+        await repository.revoke_sessions(user.id)
         audit("user_disabled", user_id=user.id)
     return _info(user, roles)
 
@@ -164,5 +166,9 @@ async def disable_user(user_id: uuid.UUID, *, actor: Identity) -> UserInfo:
 async def reset_password(user_id: uuid.UUID, data: PasswordReset, *, actor: Identity) -> None:
     user, _ = await _manageable(user_id, actor)
     await release_connection()
-    await repository.set_password(user.id, await passwords.hash_password(data.password))
+    password_hash = await passwords.hash_password(data.password)
+    # 雜湊的幾百毫秒裡對方可能被升了權限, 寫入前用最新的資料再確認一次。
+    db().expire(user)
+    await _manageable(user_id, actor)
+    await repository.set_password(user.id, password_hash)
     audit("user_password_reset", user_id=user.id)
