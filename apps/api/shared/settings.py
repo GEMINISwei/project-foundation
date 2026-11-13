@@ -24,11 +24,13 @@ class Settings(BaseSettings):
     mode: Literal["development", "production"] = "development"
     # 排程的時區。log 與資料庫一律 UTC。
     timezone: str = "Asia/Taipei"
-    api_workers: int = Field(default=1, ge=1)
+    # api 的行程數。api 是 async 的, 一個行程就能同時處理很多請求; 吃 CPU 的工作交給背景任務。
+    api_processes: int = Field(default=1, ge=1)
     sentry_dsn: str = ""
 
-    # 連線池: 每個行程 (api 的每個 worker、worker 容器) 各一份。
-    # 上限要讓所有行程加起來不超過 PostgreSQL 的 max_connections (預設 100)。
+    # 連線池: 每個行程 (api 的每個行程、每一份 worker) 各一份。
+    # 上限要讓所有行程加起來不超過 PostgreSQL 的 max_connections (預設 100);
+    # tools/compose.py 的 CONNECTIONS_PER_PROCESS 依這兩個預設值在啟動前檢查。
     db_pool_size: int = Field(default=5, ge=1)
     db_max_overflow: int = Field(default=10, ge=0)
     # 單一查詢的時間上限: 一個失控的查詢不能佔住連線到天荒地老。

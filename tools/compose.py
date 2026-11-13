@@ -23,6 +23,41 @@ WRITERS = ("nginx", "web", "api", "worker")
 LONG_RUNNING = ("postgres", "api", "worker", "web", "nginx")
 READY_TIMEOUT_SECONDS = 180
 
+# api 的記憶體上限隨行程數調整: 每個行程各載入一份完整的應用程式, 用量與行程數成正比。
+# 第一份含 Python 執行環境與餘裕; 數字依實測 (見 docs/foundation/operations.md#擴充)。
+API_MEMORY_BASE_MB = 512
+API_MEMORY_PER_EXTRA_PROCESS_MB = 256
+# 每個行程 (api 的每個行程、每一份 worker) 的連線池上限:
+# apps/api 的 db_pool_size + db_max_overflow 的預設值。
+CONNECTIONS_PER_PROCESS = 15
+# PostgreSQL 的 max_connections 預設 100, 留 10 條給 migrate、psql 與維運指令。
+MAX_APP_CONNECTIONS = 90
+
+
+def count_setting(env: dict[str, str], name: str) -> int:
+    """`.env` 裡的行程數或份數; 沒設就是 1。"""
+    value = env.get(name) or "1"
+    if not value.isdigit() or int(value) < 1:
+        fail(f".env 的 {name} 必須是正整數（目前是「{value}」）")
+    return int(value)
+
+
+def api_memory_limit(env: dict[str, str]) -> str:
+    extra = count_setting(env, "API_PROCESSES") - 1
+    return f"{API_MEMORY_BASE_MB + API_MEMORY_PER_EXTRA_PROCESS_MB * extra}M"
+
+
+def check_capacity(env: dict[str, str]) -> None:
+    """連線數超過 PostgreSQL 的上限時平常不會出錯, 要等流量大、連線池用滿才出現,
+    所以啟動前就擋下。"""
+    processes = count_setting(env, "API_PROCESSES") + count_setting(env, "WORKER_REPLICAS")
+    if processes * CONNECTIONS_PER_PROCESS > MAX_APP_CONNECTIONS:
+        fail(
+            f".env 的 API_PROCESSES 與 WORKER_REPLICAS 加起來最多 "
+            f"{MAX_APP_CONNECTIONS // CONNECTIONS_PER_PROCESS}（目前是 {processes}）："
+            f"每個行程最多佔 {CONNECTIONS_PER_PROCESS} 條資料庫連線"
+        )
+
 
 def nginx_config_hash() -> str:
     """nginx 設定是 bind mount, 內容變了 compose 看不出來; 雜湊放進 label 才會重建容器。"""
@@ -66,7 +101,12 @@ def compose(
     capture: bool = False,
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    process_env = {**os.environ, "NGINX_CONFIG_HASH": nginx_config_hash(), **(extra_env or {})}
+    process_env = {
+        **os.environ,
+        "NGINX_CONFIG_HASH": nginx_config_hash(),
+        "API_MEMORY_LIMIT": api_memory_limit(env),
+        **(extra_env or {}),
+    }
     return subprocess.run(
         [*compose_command(env), *args],
         env=process_env,
@@ -77,24 +117,39 @@ def compose(
 
 
 def container(env: dict[str, str], service: str) -> str:
+    """只有一個容器的服務 (worker 以外) 的容器名稱。"""
     return f"{env['COMPOSE_PROJECT_NAME']}-{service}"
 
 
-def container_running(env: dict[str, str], service: str) -> bool:
+def containers(env: dict[str, str], service: str) -> list[str]:
+    """一個服務的所有容器。worker 可以開多份, compose 依序命名成 `<專案>-worker-<序號>`。"""
+    if service == "worker":
+        replicas = count_setting(env, "WORKER_REPLICAS")
+        return [f"{env['COMPOSE_PROJECT_NAME']}-worker-{n}" for n in range(1, replicas + 1)]
+    return [container(env, service)]
+
+
+def running_containers() -> set[str]:
     result = subprocess.run(
         ["docker", "ps", "--format", "{{.Names}}"],
         check=True,
         text=True,
         capture_output=True,
     )
-    return container(env, service) in result.stdout.split()
+    return set(result.stdout.split())
 
 
-def container_state(env: dict[str, str], service: str) -> str:
+def container_running(env: dict[str, str], service: str) -> bool:
+    """服務有任何一個容器在執行。"""
+    running = running_containers()
+    return any(name in running for name in containers(env, service))
+
+
+def container_state(name: str) -> str:
     """容器的狀態; 有 healthcheck 的在執行中時回報健康狀態 (starting / healthy / unhealthy)。"""
     template = "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}"
     result = subprocess.run(
-        ["docker", "inspect", "--format", template, container(env, service)],
+        ["docker", "inspect", "--format", template, name],
         check=False,
         text=True,
         capture_output=True,
@@ -113,14 +168,17 @@ def is_ready(state: str) -> bool:
 def wait_until_ready(
     env: dict[str, str], services: Sequence[str], timeout: float = READY_TIMEOUT_SECONDS
 ) -> dict[str, str]:
-    """等服務就緒; 回傳逾時仍未就緒的服務與當下的狀態 (空的代表全部就緒)。"""
+    """等服務的每個容器就緒; 回傳逾時仍未就緒的容器與當下的狀態 (空的代表全部就緒)。"""
+    names = [name for service in services for name in containers(env, service)]
+    return wait_for_containers(names, timeout)
+
+
+def wait_for_containers(
+    names: Sequence[str], timeout: float = READY_TIMEOUT_SECONDS
+) -> dict[str, str]:
     deadline = time.monotonic() + timeout
     while True:
-        pending = {
-            service: state
-            for service in services
-            if not is_ready(state := container_state(env, service))
-        }
+        pending = {name: state for name in names if not is_ready(state := container_state(name))}
         if not pending or time.monotonic() >= deadline:
             return pending
         time.sleep(1)
@@ -151,38 +209,37 @@ def paused(
     `docker stop` 會等容器自己結束 (compose 設定的 stop_grace_period): 進行中的請求與任務做完才停。
     `resume_on_failure=False` 給會改資料的動作用: 失敗時資料的狀態不明, 不能自動恢復服務。
     """
-    stopped = [service for service in services if container_running(env, service)]
+    running = running_containers()
+    stopped = [name for service in services for name in containers(env, service) if name in running]
     if stopped:
         print(f"暫停服務：{'、'.join(stopped)}（等進行中的請求與任務做完）")
-    for service in stopped:
-        subprocess.run(["docker", "stop", container(env, service)], check=True, capture_output=True)
+    for name in stopped:
+        subprocess.run(["docker", "stop", name], check=True, capture_output=True)
     try:
         yield
     except BaseException:
         if resume_on_failure:
-            resume(env, stopped)
+            resume(stopped)
         elif stopped:
             print(f"失敗：{'、'.join(stopped)} 維持停止，確認資料沒問題後執行 make start")
         raise
-    resume(env, stopped)
+    resume(stopped)
 
 
-def resume(env: dict[str, str], stopped: Sequence[str]) -> None:
+def resume(stopped: Sequence[str]) -> None:
     if not stopped:
         return
     # 與停止相反的順序: 後面的服務先起來, 最後才接回流量。
-    for service in reversed(stopped):
-        subprocess.run(
-            ["docker", "start", container(env, service)], check=True, capture_output=True
-        )
-    pending = wait_until_ready(env, stopped)
+    for name in reversed(stopped):
+        subprocess.run(["docker", "start", name], check=True, capture_output=True)
+    pending = wait_for_containers(stopped)
     if pending:
         fail(f"服務沒有恢復正常：{describe(pending)}（make logs 查看原因）")
     print("已恢復服務")
 
 
 def describe(pending: dict[str, str]) -> str:
-    return "、".join(f"{service}（{state}）" for service, state in pending.items())
+    return "、".join(f"{name}（{state}）" for name, state in pending.items())
 
 
 def docker_exec(

@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 from tools import backups
-from tools.compose import WRITERS, container, container_running, paused
+from tools.compose import WRITERS, container, container_running, containers, paused
 from tools.env import app_version, confirm, fail, load_env, require_env, require_mode
 
 USAGE = (__doc__ or "").split("\n\n")[1]
@@ -56,8 +56,7 @@ def dump_to(path: Path, command: list[str]) -> None:
 
 def save_logs(env: dict[str, str], path: Path) -> None:
     with tempfile.TemporaryDirectory() as directory:
-        for service in LOGGED_SERVICES:
-            name = container(env, service)
+        for name in (name for service in LOGGED_SERVICES for name in containers(env, service)):
             with (Path(directory) / f"{name}.log").open("wb") as output:
                 subprocess.run(
                     ["docker", "logs", "--timestamps", name],

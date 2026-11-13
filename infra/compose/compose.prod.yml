@@ -1,17 +1,23 @@
 # 正式環境: 記憶體上限。吃爆時只有那個容器被 OOM kill, 不會拖垮整台主機。
+# 上限不是預留: 平常只用到實際的用量。所有上限加起來要小於主機的記憶體, 這層保護才成立。
+# 不設 CPU 上限: 單機上搶 CPU 只會變慢, 不會讓主機當掉。
 # migrate 刻意不設上限: 被 OOM kill 的後果是資料改到一半。
+# nginx 不設上限: 它被 kill 整站就斷, 而用量受設定約束 (連線數、buffer, 大的請求內容暫存到磁碟)。
 services:
   postgres:
+    # 給得最多: 它被 kill 時 api 與 worker 一起出錯, 還要跑 crash recovery。
     deploy:
       resources:
         limits:
           memory: 1G
   api:
+    # 依 API_PROCESSES 由 tools/compose.py 算出。後備值給不經過它的 compose 檢查 (make check)。
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: ${API_MEMORY_LIMIT:-512M}
   worker:
+    # WORKER_REPLICAS 開多份時每一份各自套用。
     deploy:
       resources:
         limits:
