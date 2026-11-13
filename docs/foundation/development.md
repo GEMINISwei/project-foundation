@@ -34,6 +34,8 @@ make logs api        # 看某個服務的 log
 3. 讀取端：後端 `shared/settings.py`（缺少或不合法時啟動就失敗），前端 `shared/runtime/`。
 
 要自動產生的祕密另外加進 `tools/commands/init.py` 的 `GENERATED`。`make doctor` 會提醒 `.env` 缺了哪些變數。
+已經部署的主機不會自動多出新變數：需要時在主機的 `.env` 補上，再照
+[套用 `.env` 的變更](operations.md#套用-env-的變更)重新部署。
 
 ## 指令
 
