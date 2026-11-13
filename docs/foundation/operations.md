@@ -174,7 +174,7 @@ Ubuntu 24.04 內建的 nginx 是 1.24，`example.conf` 的 `listen 443 ssl http2
 
 Variable 沒設定或列出的組找不到 environment，這次就一套都不部署並說明原因。
 
-每次部署：確認 tag 等於 `v<APP_VERSION>` → 確認這個 commit 在 `main` 的 CI 通過（沒有就先跑）→
+每次部署：確認 tag 等於 `v<APP_VERSION>`、指向的 commit 在 `main` 上 → 確認它在 `main` 的 CI 通過（沒有就先跑）→
 逐套確認資料庫不會往回（見〈[回滾與 migration](#回滾與-migration)〉）→ 建兩份映像檔推到 GHCR →
 **一次一套**依序部署：SSH 到主機 → `make backup allow-fresh` → checkout 同一個 tag → 依 digest 拉映像檔並
 `make start` → `make status` → 清掉舊映像檔與過舊的備份。一套失敗不會中斷其他套；失敗的 job 會標出停在哪一步，
@@ -271,5 +271,6 @@ make backup restore uploads [檔案]   # 還原上傳的檔案
 - **資料庫只接受目前版本的備份**：別版的結構可能跟目前的程式對不上，要還原別版就先部署回那一版。
 - 上傳的檔案任何版本的備份都能還原。資料庫的紀錄會指到上傳的檔案，兩邊要還原同一組：
   還原完一邊，指令會印出同一組另一半的還原指令。
+- `backups/` 只有執行備份的帳號進得去：備份檔裡有密碼雜湊與 AUDIT。
 - 備份留在主機上不算備份：把 `backups/` 同步到別的地方，並定期做還原演練。
 - 上傳的檔案一律存在 api 容器的 `/app/uploads/<模組>/`：存到別的路徑，重建容器就消失，也備份不到。
