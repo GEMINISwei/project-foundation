@@ -39,7 +39,7 @@ from shared.events import EventBus, use_event_bus
 from shared.i18n import LangText, Language, current_language, resolve_language
 from shared.jobs import JobSpec, Schedule
 from shared.jobs.builtin import BUILTIN_JOBS, BUILTIN_SCHEDULES
-from shared.logging import configure_logging, get_logger, init_error_tracking
+from shared.logging import configure_logging, get_logger
 from shared.module import ModuleManifest, validate_modules
 from shared.settings import settings
 
@@ -279,7 +279,6 @@ def create_platform_app(
 ) -> FastAPI:
     resolved = validate_modules(modules)
     configure_logging(json_output=settings.is_production)
-    init_error_tracking(app_version)
 
     responses: dict[int | str, dict[str, Any]] = {"default": {"model": ErrorBody}}
     # OpenAPI 的 info.version 固定不動: 前後端同一個 repo、一起部署,

@@ -12,7 +12,6 @@ x-api: &api
     EXPIRE_HOURS: ${EXPIRE_HOURS:?}
     TIMEZONE: ${TIMEZONE:-Asia/Taipei}
     API_PROCESSES: ${API_PROCESSES:-1}
-    SENTRY_DSN: ${SENTRY_DSN:-}
 
 # 啟動期間每秒檢查, 之後放慢; 單機 compose 的 healthcheck 只用在啟動順序與部署閘門。
 x-healthcheck: &healthcheck

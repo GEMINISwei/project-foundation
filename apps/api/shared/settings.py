@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     timezone: str = "Asia/Taipei"
     # api 的行程數。api 是 async 的, 一個行程就能同時處理很多請求; 吃 CPU 的工作交給背景任務。
     api_processes: int = Field(default=1, ge=1)
-    sentry_dsn: str = ""
 
     # 連線池: 每個行程 (api 的每個行程、每一份 worker) 各一份。
     # 上限要讓所有行程加起來不超過 PostgreSQL 的 max_connections (預設 100);
