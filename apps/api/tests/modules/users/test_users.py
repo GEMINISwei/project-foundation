@@ -1,7 +1,11 @@
 """管理者對其他使用者的操作, 重點在「有權限也不該做」的那幾條。"""
 
 import pytest
+from sqlalchemy import text
 
+from modules.users import service
+from shared.auth import passwords
+from shared.db.session import engine
 from tests.helpers import (
     PASSWORD,
     admin_headers,
@@ -210,3 +214,82 @@ async def test_listing_users_does_not_query_once_per_row(client):
     finally:
         event.remove(engine().sync_engine, "before_cursor_execute", count)
     assert for_two == for_six
+
+
+async def execute(sql: str, **params):
+    """另開一條連線寫入並 commit, 模擬同一時間另一個請求的寫入。"""
+    async with engine().begin() as connection:
+        await connection.execute(text(sql), params)
+
+
+async def test_manage_user_with_disabled_higher_role_is_denied(client):
+    admin = await admin_headers(client)
+    _, manager = await user_with(client, admin, "manager", ["users:write"])
+    stronger, _ = await user_with(client, admin, "stronger", ["users:write", "roles:write"])
+    # 角色日後可能恢復, 停用期間讓人重設密碼就等於先拿到那個帳號。
+    await client.post(f"/api/roles/{stronger['roles'][0]['id']}/disable", headers=admin)
+
+    responses = [
+        await client.put(
+            f"/api/users/{stronger['id']}/password", headers=manager, json={"password": PASSWORD}
+        ),
+        await client.post(f"/api/users/{stronger['id']}/disable", headers=manager),
+        await client.put(
+            f"/api/users/{stronger['id']}", headers=manager, json=update_body(stronger)
+        ),
+    ]
+    assert [response.json()["code"] for response in responses] == ["users.cannot_manage_higher"] * 3
+
+
+async def test_disable_user_with_concurrent_revoke_keeps_auth_version_increasing(
+    client, monkeypatch
+):
+    admin = await admin_headers(client)
+    first = await create_user(client, admin, "first")
+    second = await create_user(client, admin, "second")
+    original_get_roles = service.get_roles
+
+    async def get_roles_then_revoke(role_ids):
+        # 管理者讀完帳號之後、寫入之前, 對方登出 (另一個請求把版本加一)。
+        roles = await original_get_roles(role_ids)
+        await execute("UPDATE users SET auth_version = auth_version + 1 WHERE id = :id", id=target)
+        return roles
+
+    monkeypatch.setattr(service, "get_roles", get_roles_then_revoke)
+    version = "SELECT auth_version FROM users WHERE id = :id"
+
+    target = first["id"]
+    before = await scalar(version, id=target)
+    await client.post(f"/api/users/{target}/disable", headers=admin)
+    assert await scalar(version, id=target) == before + 2
+
+    target = second["id"]
+    before = await scalar(version, id=target)
+    await client.put(
+        f"/api/users/{target}", headers=admin, json=update_body(second, is_disabled=True)
+    )
+    assert await scalar(version, id=target) == before + 2
+
+
+async def test_reset_password_target_promoted_during_hashing_is_denied(client, monkeypatch):
+    admin = await admin_headers(client)
+    _, manager = await user_with(client, admin, "manager", ["users:write"])
+    target = await create_user(client, admin, "target")
+    stronger = await create_role(client, admin, "Role Admin", ["users:write", "roles:write"])
+    original_hash = passwords.hash_password
+
+    async def hash_while_promoted(password):
+        # 雜湊要好幾百毫秒, 這段時間別的管理者把目標帳號升了權限。
+        await execute(
+            "INSERT INTO user_roles (user_id, role_id) VALUES (:user_id, :role_id)",
+            user_id=target["id"],
+            role_id=stronger["id"],
+        )
+        return await original_hash(password)
+
+    monkeypatch.setattr(passwords, "hash_password", hash_while_promoted)
+    response = await client.put(
+        f"/api/users/{target['id']}/password", headers=manager, json={"password": "Reset#12345"}
+    )
+    assert response.json()["code"] == "users.cannot_manage_higher"
+    await login(client, "target")
