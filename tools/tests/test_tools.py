@@ -674,6 +674,7 @@ def test_restore_can_run_without_a_prompt_for_the_automated_check(tmp_path, monk
     monkeypatch.setattr(backup, "paused", paused)
     monkeypatch.setattr(backup, "backup_all", lambda _env: steps.append(("backup",)))
     monkeypatch.setattr(backup.subprocess, "run", restore_command)
+    monkeypatch.setattr(backup, "_psql", lambda _env, _query: "0")
 
     backup.apply_restore(DEVELOPMENT, "db", dump)
 
@@ -773,3 +774,71 @@ def test_backup_stops_everything_that_can_write_before_dumping(tmp_path, monkeyp
         ("dump",),
         ("resumed",),
     ]
+
+
+@pytest.fixture
+def restore_steps(tmp_path, monkeypatch):
+    """記下還原依序做了什麼; 回傳 (步驟, 同一組備份的 dump 路徑)。"""
+    from contextlib import contextmanager
+
+    dump = tmp_path / "app_v1.0.0_20261101_000000.dump"
+    dump.write_bytes(b"dump")
+    dump.with_suffix(".tar").write_bytes(b"tar")
+    steps = []
+
+    @contextmanager
+    def paused(_env, _services, *, resume_on_failure):
+        steps.append(("paused", resume_on_failure))
+        yield
+        steps.append(("resumed",))
+
+    def run(command, **_kwargs):
+        steps.append(("db",) if "pg_restore" in " ".join(command) else ("uploads",))
+        return subprocess.CompletedProcess(command, 0)
+
+    def psql(_env, query):
+        steps.append(("psql", query))
+        return "7"
+
+    monkeypatch.setattr(backup, "paused", paused)
+    monkeypatch.setattr(backup, "backup_all", lambda _env: steps.append(("backup",)))
+    monkeypatch.setattr(backup, "uploads_command", lambda *_args, **_kwargs: ["restore-uploads"])
+    monkeypatch.setattr(backup.subprocess, "run", run)
+    monkeypatch.setattr(backup, "_psql", psql)
+    return steps, dump
+
+
+def test_restore_all_restores_both_halves_inside_one_pause(restore_steps):
+    steps, dump = restore_steps
+    backup.apply_restore(DEVELOPMENT, "all", dump)
+    # 分兩次還原的話中間會恢復服務: 使用者會碰到新的資料庫配舊的檔案。
+    order = [step[0] for step in steps if step[0] != "psql"]
+    assert order == ["paused", "backup", "db", "uploads", "resumed"]
+
+
+def test_restoring_the_database_pushes_every_auth_version_past_the_old_maximum(restore_steps):
+    steps, dump = restore_steps
+    backup.apply_restore(DEVELOPMENT, "db", dump)
+    # 還原讓 auth_version 倒退, 已經撤銷的登入憑證會再次有效。只加一不夠: 備份之後撤銷過
+    # 兩次以上的帳號, 中間那張憑證還是會復活。
+    relevant = [step for step in steps if step[0] in ("psql", "db")]
+    assert [step[0] for step in relevant] == ["psql", "db", "psql"]
+    assert "max(auth_version)" in relevant[0][1]
+    assert "GREATEST(auth_version, 7) + 1" in relevant[2][1]
+
+
+def test_restore_warns_to_rotate_the_secret_when_the_old_maximum_is_unreadable(
+    restore_steps, monkeypatch, capsys
+):
+    steps, dump = restore_steps
+
+    def broken(_env, query):
+        steps.append(("psql", query))
+        raise subprocess.CalledProcessError(1, "psql")
+
+    # 資料庫壞到讀不出來正是需要還原的時候: 不能因此擋下還原。
+    monkeypatch.setattr(backup, "_psql", broken)
+    backup.apply_restore(DEVELOPMENT, "db", dump)
+    assert ("db",) in steps
+    assert not [step for step in steps if step[0] == "psql" and "UPDATE" in step[1]]
+    assert "JWT_SECRET_KEY" in capsys.readouterr().out
