@@ -36,6 +36,8 @@
 
    `committed` 是那次請求的寫入最後有沒有成立：`role_updated` 配上 `false` 代表有人試過，但資料沒有變。
 
+   `audit_logs` 不會自動清理：紀錄刻意完整保留。資料量大到影響備份時，再依 `created_at` 刪掉舊的。
+
    拿到 `request_id` 再用 `make logs trace` 看那次請求的完整經過。
 
 log 的格式：api 與 worker 在正式環境是一行一筆 JSON（`event`、`level`、`request_id`、`user_id`…），
@@ -47,7 +49,7 @@ web 伺服器端的錯誤與**瀏覽器端沒被接住的錯誤**（`event: clie
 | 整站打不開 | `make status`、`make doctor`；主機的 reverse proxy |
 | 啟動後 api 起不來 | `make logs migrate`（migration 或初始資料失敗）、`make logs api`（設定缺漏會列出是哪幾項） |
 | 某個操作失敗 | 錯誤訊息裡的 request id → `make logs trace` |
-| 登入被擋（429） | 限流：同一個 IP 加帳號 5 分鐘 10 次。所有人都被擋時檢查主機有沒有送 `X-Real-IP` |
+| 登入被擋（429） | 限流：同一個 IP 加帳號 5 分鐘 10 次，同一個 IP 不分帳號 5 分鐘 50 次（共用出口 IP 的辦公室會一起算）。所有人都被擋時檢查主機有沒有送 `X-Real-IP` |
 | 排程沒有執行 | `make logs worker`、`make jobs list`；手動觸發 `make jobs run <任務名稱>` |
 | 服務週期性重啟，或 api 的行程反覆被補回來 | 記憶體上限（[正式環境的上限](#擴充)）：`docker inspect --format '{{.State.OOMKilled}}' <容器>` 是 `true` 就是被 OOM kill，`docker stats` 看當下用量。api 開多個行程時被 kill 的只有其中一個行程，容器不會重啟，log 裡會看到行程重新啟動 |
 

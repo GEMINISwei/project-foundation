@@ -26,7 +26,7 @@ from tools.env import REPO_ROOT, app_version, fail, load_env, require_env, requi
 USAGE = "用法：make start [lan]（lan 僅限開發機，讓區網內的裝置連進來）"
 MAINTENANCE_HINT = (
     "對外入口維持關閉（維護狀態）。修正後重新執行 make start；"
-    "要退回上一版見 docs/foundation/operations.md 的「回滾」"
+    "要退回上一版見 docs/foundation/operations.md 的「回滾與 migration」"
 )
 
 

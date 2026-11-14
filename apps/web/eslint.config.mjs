@@ -38,10 +38,6 @@ const eslintConfig = defineConfig([
   ]),
   {
     // 風格規則, 數字的理由見 docs/foundation/development.md〈程式碼風格〉。
-    //
-    // **ESLint 卡在 9.x**: eslint-config-next 帶進來的 eslint-plugin-react peer 只到 ^9.7,
-    // 裝 10 會在載入規則時就炸。移除條件: `npm view eslint-plugin-react peerDependencies`
-    // 涵蓋 10。那時順便把下面 deprecated 的 max-len 換成 @stylistic。
     rules: {
       // 這裡算字元數, 後端 ruff 算顯示寬度。豁免字串: i18n 譯文本來就長。
       "max-len": ["error", {
