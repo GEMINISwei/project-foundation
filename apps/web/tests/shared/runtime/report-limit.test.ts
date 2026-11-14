@@ -34,3 +34,38 @@ it("時間窗過了之後重新開始計數", () => {
   expect(limiter.allow("203.0.113.7", MINUTE - 1)).toBe(false)
   expect(limiter.allow("203.0.113.7", MINUTE)).toBe(true)
 })
+
+/**
+ * 被丟掉的回報不留痕跡的話, 看 log 的人不知道有東西被擋下, 也看不出是不是有人在灌。
+ * 所以每個時間窗丟了幾筆要取得到, 由呼叫端在時間窗結束時寫成一行摘要。
+ */
+
+it("被丟掉的回報會計數，時間窗結束後可以取得筆數", () => {
+  const limiter = createReportLimiter()
+  for (let count = 0; count < 8; count += 1) limiter.allow("203.0.113.7", 0)
+
+  expect(limiter.takeDropped(limiter.windowStart())).toBe(3)
+})
+
+it("沒有丟掉任何回報時筆數是零，取過之後不重複計算", () => {
+  const limiter = createReportLimiter()
+  limiter.allow("203.0.113.7", 0)
+  expect(limiter.takeDropped(limiter.windowStart())).toBe(0)
+
+  for (let count = 0; count < 6; count += 1) limiter.allow("203.0.113.7", 0)
+  expect(limiter.takeDropped(limiter.windowStart())).toBe(2)
+  expect(limiter.takeDropped(limiter.windowStart())).toBe(0)
+})
+
+it("換到下一個時間窗之後，仍然取得到上一個時間窗丟掉的筆數", () => {
+  const limiter = createReportLimiter()
+  for (let count = 0; count < 7; count += 1) limiter.allow("203.0.113.7", 1000)
+  const firstWindow = limiter.windowStart()
+
+  // 摘要是用計時器在時間窗結束時寫的: 在那之前剛好有新的回報進來, 計數不能跟著被清掉。
+  limiter.allow("203.0.113.7", 1000 + MINUTE)
+
+  expect(limiter.windowStart()).toBe(1000 + MINUTE)
+  expect(limiter.takeDropped(firstWindow)).toBe(2)
+  expect(limiter.takeDropped(limiter.windowStart())).toBe(0)
+})
