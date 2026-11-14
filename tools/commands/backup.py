@@ -216,7 +216,9 @@ def _restore_database(env: dict[str, str], path: Path) -> None:
             "請換掉 .env 的 JWT_SECRET_KEY 再啟動（docs/foundation/operations.md〈帳號〉）"
         )
         return
-    _psql(env, f"UPDATE users SET auth_version = GREATEST(auth_version, {floor}) + 1")  # noqa: S608 — floor 是剛從資料庫讀出來並轉成 int 的數字
+    # floor 是剛從資料庫讀出來並轉成 int 的數字, 不是外部輸入。
+    update = f"UPDATE users SET auth_version = GREATEST(auth_version, {floor}) + 1"  # noqa: S608  # 只代入 int
+    _psql(env, update)
 
 
 def _restore_uploads(env: dict[str, str], path: Path) -> None:
