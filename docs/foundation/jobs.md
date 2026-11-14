@@ -42,8 +42,25 @@ await enqueue(SEND_REMINDER, {"order_id": str(order.id)}, run_at=due_at)   # 指
     回滾後重跑，不會重複。
   - **資料庫以外的副作用要自己去重**（寄信、扣款、呼叫外部 API）：交易管不到，對方已經收到、任務卻在
     標記完成之前中斷時，重跑會再送一次。把 `current_job_id()` 當成去重的鍵交給對方（多數金流與
-    寄信服務有 idempotency key），它在每次重試都相同；對方不支援時，先在自己的資料表記下「這個任務
-    已經送出」再送，並接受極少數情況會漏送而不是重送。
+    寄信服務有 idempotency key），它在每次重試都相同。對方不支援時沒有兩全的做法，只能二選一：
+    - **寧可漏送**：送出之前另開一個交易（`independent_session()`）記下「這個任務已經送出」並提交，
+      再送；重跑時看到紀錄就跳過。**不能記在任務自己的交易裡**（`db()`）：任務中斷時那筆紀錄會跟著
+      回滾，等於沒記。代價是紀錄提交之後、送出之前中斷的話，這一次就不會再送。
+    - **寧可重送**：什麼都不記，接受中斷時對方會收到兩次。通知可以，扣款不行。
+
+    ```python
+    async with independent_session() as session:
+        # 唯一約束擋下重跑: 已經有這一筆就代表送過了。
+        first_time = await session.scalar(
+            insert(SentNotice)
+            .values(job_id=current_job_id())
+            .on_conflict_do_nothing()
+            .returning(SentNotice.job_id)
+        )
+    if first_time is None:
+        return
+    await mailer.send(...)
+    ```
 - **payload 只放 id 與小的值**（要能存成 JSON）；大的資料存資料庫，任務裡再查。
 - **任務名稱不要改**：已經排入的舊任務會找不到處理函式而失敗。
 - **單次執行的時間上限**最多 300 秒（`JobSpec(timeout_seconds=...)` 只能調低，超過時 worker 啟動就報錯）：
