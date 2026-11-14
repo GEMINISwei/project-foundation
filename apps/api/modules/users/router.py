@@ -8,6 +8,7 @@ from shared import context
 from shared.auth.identity import Identity, require
 from shared.auth.permissions import PermissionCatalog, get_catalog
 from shared.db.pagination import Page, PageParams
+from shared.db.session import release_connection
 from shared.rate_limit import RateLimiter
 
 from . import account, service
@@ -64,11 +65,12 @@ async def update_my_profile(data: ProfileUpdate, identity: Current) -> None:
 @router.put("/me/password")
 async def change_my_password(data: PasswordChange, identity: Current) -> Token:
     """換自己的密碼。所有既有的登入都會失效, 呼叫端要改用回傳的新憑證。"""
-    key = str(identity.id)
-    await password_change_limiter.check(key)
-    token = await account.change_password(identity, data)
-    await password_change_limiter.reset(key)
-    return token
+    # 查登入者時已經佔了一條連線, 限流計數要另開交易再拿一條: 先還回去, 否則同時進來的請求
+    # 超過連線池的數量時, 每個都佔著一條等第二條, 互相等到逾時, 期間所有人都拿不到連線。
+    await release_connection()
+    await password_change_limiter.check(str(identity.id))
+    # 成功也不歸零: 偷到登入狀態的人不能靠改一次密碼把嘗試次數洗回來。
+    return await account.change_password(identity, data)
 
 
 @router.post("/me/logout", status_code=204)
