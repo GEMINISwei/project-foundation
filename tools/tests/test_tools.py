@@ -7,8 +7,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from tools import __main__ as cli
 from tools import backups, compose
-from tools.commands import check, doctor, logs, release, services
+from tools.commands import backup, check, db, doctor, logs, pipeline, release, services
 from tools.env import REPO_ROOT, parse_env_file
 
 
@@ -104,15 +105,15 @@ def migration(directory: Path, revision: str) -> None:
 def test_deploy_is_allowed_when_the_database_is_at_a_known_revision(tmp_path, capsys):
     migration(tmp_path, "aaa111")
     migration(tmp_path, "bbb222")
-    check.check_migration_direction(str(tmp_path), "aaa111")
-    check.check_migration_direction(str(tmp_path), "")  # 全新的資料庫
+    pipeline.check_migration_direction(str(tmp_path), "aaa111")
+    pipeline.check_migration_direction(str(tmp_path), "")  # 全新的資料庫
     assert "放行" in capsys.readouterr().out
 
 
 def test_deploy_is_refused_when_the_database_is_ahead_of_the_code(tmp_path):
     migration(tmp_path, "aaa111")
     with pytest.raises(SystemExit):
-        check.check_migration_direction(str(tmp_path), "zzz999")
+        pipeline.check_migration_direction(str(tmp_path), "zzz999")
 
 
 def test_versions_are_compared_as_numbers_not_text():
@@ -561,3 +562,92 @@ def test_status_volumes_shows_full_names_and_sizes_without_a_total():
         "app_production_postgres_data  65.6MB  Used",
         "app_development_uploads       0B      Unused",
     ]
+
+
+DEVELOPMENT = {"MODE": "development", "COMPOSE_PROJECT_NAME": "app"}
+PRODUCTION = {"MODE": "production", "COMPOSE_PROJECT_NAME": "app"}
+DEVELOPMENT_ONLY = ["check", "gen-types", "e2e", "release"]
+
+
+def names(env):
+    return [name for name, _ in cli.visible_commands(env)]
+
+
+def test_help_before_init_lists_only_init():
+    # 還沒有 .env: 其他指令不是不能跑 (CI 就是這樣跑 make check), 只是這時該做的只有這一件事。
+    assert names(None) == ["init"]
+
+
+def test_help_in_development_lists_every_command_except_pipeline():
+    listed = names(DEVELOPMENT)
+    assert set(DEVELOPMENT_ONLY) <= set(listed)
+    assert {"init", "start", "doctor", "db", "backup"} <= set(listed)
+    assert "pipeline" not in listed
+
+
+def test_help_in_production_hides_development_only_commands():
+    listed = names(PRODUCTION)
+    assert listed == ["init", "start", "stop", "status", "logs", "doctor", "db", "jobs", "backup"]
+
+
+def test_init_summary_changes_once_env_exists():
+    before = dict(cli.visible_commands(None))["init"]
+    after = dict(cli.visible_commands(PRODUCTION))["init"]
+    assert "建立" in before
+    assert "補上" in after and "建立" not in after
+
+
+def test_db_help_in_production_hides_migration_and_reset():
+    development = cli.command_help("db", DEVELOPMENT)
+    production = cli.command_help("db", PRODUCTION)
+    assert "make db migration" in development and "make db reset" in development
+    assert "make db migration" not in production and "make db reset" not in production
+    assert "make db superuser" in production
+
+
+@pytest.mark.parametrize("name", DEVELOPMENT_ONLY)
+def test_development_only_commands_are_refused_in_production(name, monkeypatch, capsys):
+    # help 不列出來的指令, 真的下了也要被擋: 兩邊用同一份清單。
+    assert name not in names(PRODUCTION)
+    monkeypatch.setattr(cli, "current_env", lambda: PRODUCTION)
+    with pytest.raises(SystemExit):
+        cli.main([name, "anything"])
+    assert "正式環境" in capsys.readouterr().err
+
+
+def test_pipeline_usage_says_it_is_for_the_deploy_workflow(capsys):
+    for args in ([], ["deploy"]):
+        with pytest.raises(SystemExit):
+            pipeline.run("pipeline", args)
+        assert "部署流程" in capsys.readouterr().err
+
+
+def test_pipeline_backup_skips_a_host_without_data(monkeypatch, capsys):
+    done = []
+    monkeypatch.setattr(pipeline, "load_env", lambda: DEVELOPMENT)
+    monkeypatch.setattr(pipeline.backup, "backup_all", done.append)
+
+    # 第一次部署: 連資料 volume 都沒有, 沒有東西可以備份。
+    monkeypatch.setattr(pipeline.backup, "is_fresh_host", lambda _env: True)
+    pipeline.run("pipeline", ["backup"])
+    assert done == []
+    assert "略過" in capsys.readouterr().out
+
+    monkeypatch.setattr(pipeline.backup, "is_fresh_host", lambda _env: False)
+    pipeline.run("pipeline", ["backup"])
+    assert done == [DEVELOPMENT]
+
+
+def test_old_automation_spellings_are_gone(monkeypatch):
+    for module in (backup, db):
+        monkeypatch.setattr(module, "load_env", lambda: DEVELOPMENT)
+    monkeypatch.setattr(check, "load_env", lambda **_kwargs: DEVELOPMENT)
+    # 不能真的去碰 docker: 這些寫法應該在那之前就被當成不認得的參數。
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: pytest.fail("不該執行"))
+    for module, name, args in (
+        (backup, "backup", ["allow-fresh"]),
+        (db, "db", ["revision"]),
+        (check, "check", ["migration-direction", "versions", "abc"]),
+    ):
+        with pytest.raises(SystemExit):
+            module.run(name, args)
