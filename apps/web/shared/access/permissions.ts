@@ -1,6 +1,6 @@
 import type { Permission } from "@/shared/api/types"
 
-// 走 `has()` 而不是直接 `permissions.includes("...")`: 參數標成 Permission 之後,
+// 走 `includesPermission()` 而不是直接 `permissions.includes("...")`: 參數標成 Permission 之後,
 // 權限字串打錯或後端刪掉某個權限時, 這裡會**編譯失敗**而不是靜默回傳 false。
 function includesPermission(permissions: readonly string[], permission: Permission) {
   return permissions.includes(permission)

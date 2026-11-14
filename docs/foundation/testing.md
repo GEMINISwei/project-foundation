@@ -55,7 +55,7 @@ make e2e check                        # 用正式環境的映像檔跑全部, CI
 
 ## 驗收條件與測試名稱
 
-動手之前把驗收條件寫進 Draft PR 的「驗證」段，**每一條對應一個測試名稱**：
+動手之前列出驗收條件，**每一條對應一個測試名稱**，開 Draft PR 時寫進「驗證」段：
 
 ```text
 - 管理者不能停用自己的帳號 → test_nobody_can_disable_themselves_or_change_their_own_roles

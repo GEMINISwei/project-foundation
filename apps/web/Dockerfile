@@ -30,7 +30,7 @@ COPY . .
 # 同一個值兩用的話, 真金鑰會跟著 manifest 被烤進 image。所以 build 期只給這個
 # **公開常數**, 真金鑰由 compose 在執行期注入 —— Next 的實作是環境變數優先於 manifest
 # (以上都實測過, 不要憑讀碼推翻)。忘了注入由 instrumentation.ts 在開機時擋下,
-# ci.yml 的 images job 也會檢查 image 裡只有這個常數。
+# ci.yml 的 e2e job 也會檢查 image 裡只有這個常數。
 ARG NEXT_ACTIONS_ID_SALT="cHVibGljLWFjdGlvbi1pZC1zYWx0LW5vdC1zZWNyZXQ="
 RUN NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$NEXT_ACTIONS_ID_SALT" npm run build
 

@@ -335,7 +335,7 @@ jobs:
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           ENVIRONMENT: ${{ matrix.environment }}
         run: .github/scripts/deploy-ssh.sh "${ENVIRONMENT}"
-      # 這份 Makefile 與 scripts/ 經 SSH 的 stdin 送到主機的暫存目錄, 接上主機的 .env 跑
+      # 這份 Makefile 與 tools/ 經 SSH 的 stdin 送到主機的暫存目錄, 接上主機的 .env 跑
       # `make db revision`; 主機的 repo 目錄一個檔案都不動。
       - name: 資料庫不會往回
         env:

@@ -6,7 +6,7 @@ type ActionFormValue = string | readonly string[] | undefined
  * `__fields` 是 phantom type, 執行期不存在 (`FormData` 本身沒有這個屬性), 只用來讓
  * `getActionForm*` 的 name 參數收成 `keyof T`。少了它, 欄位名會變成組裝端與讀取端
  * 各寫一次的字面字串, 打錯字要到執行期拿到空字串才發現 —— 而各模組的 `actions.ts`
- * 正是刻意不寫執行期測試的一層 (見 docs/foundation/testing.md 的 TDD 適用範圍)。
+ * 正是刻意不寫執行期測試的一層 (見 docs/foundation/testing.md〈前端〉)。
  */
 export type ActionFormData<T> = FormData & { readonly __fields?: T }
 

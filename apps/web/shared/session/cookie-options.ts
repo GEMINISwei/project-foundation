@@ -1,5 +1,5 @@
 // 不要加上 `server-only`: 這是純函式, 抽出來就是為了能被單元測試。碰到 next/headers
-// 的那一步留在呼叫端 (modules/auth/actions.ts)。
+// 的那一步留在呼叫端 (access-token.server.ts 與 shared/i18n/actions.ts)。
 
 /**
  * 依 `X-Forwarded-Proto` 決定 cookie 要不要帶 `Secure`。

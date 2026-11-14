@@ -38,7 +38,6 @@ updates:
       # 見 apps/web/package.json 的 `//devDependencies`: 跟著 .nvmrc 的 Node major 手動升。
       - dependency-name: "@types/node"
         update-types: [version-update:semver-major]
-      # 見 apps/web/eslint.config.mjs 的「ESLint 卡在 9.x」。
       # 見 apps/web/package.json 的 `//devDependencies`。
       - dependency-name: typescript
         update-types: [version-update:semver-major]
@@ -54,7 +53,7 @@ updates:
       - dependency-name: typescript
         update-types: [version-update:semver-major]
 
-  # Dockerfile 的 base image。只寫 major (node:24) 或 minor (python:3.14) 的 tag 本來就會吃到修補版,
+  # Dockerfile 的 base image。只寫 major (node:26) 或 minor (python:3.15) 的 tag 本來就會吃到修補版,
   # 這裡擋的是跳到下一個 Node major 或 Python minor: 兩者都要跟 .nvmrc、pyproject.toml 一起手動升。
   - package-ecosystem: docker
     directories: [/apps/api, /apps/web]

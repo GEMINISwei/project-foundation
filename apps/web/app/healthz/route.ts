@@ -6,7 +6,7 @@
 // `depends_on: api: service_healthy` 也已經表達了依賴, web 再重複判一次只會讓故障範圍
 // 看起來比實際大。
 //
-// 這支是 `app/` 底下唯一的 route handler, 允許的內容見 docs/foundation/architecture.md 的分級規則。
+// 這支是 `app/` 底下唯一的 route handler。
 // 命名維持避開 `/api`: 那個前綴在這個專案裡專指「後端的東西」, 而 nginx 刻意沒有把任何
 // `/api/` 路徑對外開放 (見 infra/nginx/default.conf.template)。在 Next 這邊開一條
 // `/api/...` 只會讓兩邊的意思對不起來。
