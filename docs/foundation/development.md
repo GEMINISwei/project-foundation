@@ -7,7 +7,7 @@
 
 ```bash
 make init dev   # 產生 .env、安裝三處的相依 (apps/api、apps/web、e2e)、啟用 git hook
-make start      # 啟動 postgres → migrate → api、worker → web → nginx
+make start      # 啟動 postgres → migrate → api、worker → web, 都就緒才啟動 nginx
 make db superuser
 ```
 

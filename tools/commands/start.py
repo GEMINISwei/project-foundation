@@ -1,10 +1,10 @@
 """make start [lan]: 啟動整套服務。
 
-啟動順序是 postgres → migrate → api、worker → web → nginx, 全部就緒而且入口打得通才算成功。
+啟動順序是 postgres → migrate → api、worker → web, 都就緒了才啟動 nginx, 入口打得通才算成功。
 
 正式環境升版時新舊程式不會同時服務: 映像檔先備好 → 檢查 nginx 設定 → 停掉對外入口與舊的
-web、api、worker (等進行中的請求與任務做完) → migrate → 啟動新版。migrate 或啟動失敗時對外入口
-維持關閉: 寧可停在維護狀態, 也不讓不確定的版本接流量。
+web、api、worker (等進行中的請求與任務做完) → migrate → 啟動新版, 最後才開放入口。
+migrate 或啟動失敗時對外入口維持關閉: 寧可停在維護狀態, 也不讓不確定的版本接流量。
 """
 
 from __future__ import annotations
@@ -63,14 +63,33 @@ def prepare_images(env: dict[str, str], extra: dict[str, str]) -> None:
     compose(env, "pull" if from_registry else "build", extra_env=extra)
 
 
-def startup_problem(env: dict[str, str]) -> str:
-    """啟動之後哪裡不對; 全部正常回傳空字串。"""
-    pending = wait_until_ready(env, LONG_RUNNING)
+def bring_up(env: dict[str, str], extra: dict[str, str], *, production: bool) -> None:
+    """啟動服務: 入口以外的都就緒了才開放入口, 入口打不通就關回去。
+
+    一起啟動的話, nginx 在 web 健康之後就開始接流量, 這時 worker 還沒確認、入口也還沒實際
+    打過: 沒通過檢查的版本會先服務一陣子。
+    """
+    hint = MAINTENANCE_HINT if production else ""
+    backend = [service for service in LONG_RUNNING if service != "nginx"]
+    compose(env, "up", "-d", "--remove-orphans", *backend, extra_env=extra)
+    pending = wait_until_ready(env, backend)
     if pending:
-        return f"服務沒有就緒：{describe(pending)}"
-    if not entry_responds(env):
-        return f"入口沒有回應：http://127.0.0.1:{env['SYSTEM_PORT']}/healthz"
-    return ""
+        fail(f"服務沒有就緒：{describe(pending)}（make logs 查看原因）。{hint}")
+
+    # --no-deps: 相依的服務剛剛已經確認過; 讓 compose 再處理一次, 它可能重建 api,
+    # 入口就會開在一個還在重新啟動的後端前面。
+    compose(env, "up", "-d", "--no-deps", "nginx", extra_env=extra)
+    pending = wait_until_ready(env, ["nginx"])
+    if pending:
+        problem = f"服務沒有就緒：{describe(pending)}"
+    elif not entry_responds(env):
+        problem = f"入口沒有回應：http://127.0.0.1:{env.get('SYSTEM_PORT', '')}/healthz"
+    else:
+        return
+    if production:
+        # 沒通過檢查的版本不接流量。
+        compose(env, "stop", "nginx", extra_env=extra)
+    fail(f"{problem}（make logs 查看原因）。{hint}")
 
 
 def run(_name: str, args: list[str]) -> None:
@@ -106,13 +125,7 @@ def run(_name: str, args: list[str]) -> None:
     if migrate.returncode != 0:
         fail(f"migration 失敗（原因見上方訊息）。{MAINTENANCE_HINT if production else ''}")
 
-    compose(env, "up", "-d", "--remove-orphans", extra_env=extra)
-    problem = startup_problem(env)
-    if problem:
-        if production:
-            # 沒通過檢查的版本不接流量。
-            compose(env, "stop", "nginx", extra_env=extra)
-        fail(f"{problem}（make logs 查看原因）。{MAINTENANCE_HINT if production else ''}")
+    bring_up(env, extra, production=production)
 
     print(f"已啟動：http://localhost:{env['SYSTEM_PORT']}")
     if lan:
