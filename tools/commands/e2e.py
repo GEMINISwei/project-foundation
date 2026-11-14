@@ -4,7 +4,8 @@
     make e2e test <檔案…>       重設資料後只跑指定的 spec (路徑相對於 e2e/)
     make e2e grep "<名稱>"      重設資料後只跑名稱符合的測試
     make e2e down               拆掉 E2E 環境與它的資料
-    make e2e check              起一套拋棄式的正式環境 image 跑全部測試 (CI 跑的就是這個)
+    make e2e check              起一套拋棄式的正式環境 image 跑全部測試, 再實際備份還原一次
+                                (CI 跑的就是這個)
 
 開發中寫測試用 up + test: 原始碼是 bind mount, 改了直接生效。check 用正式環境的建置結果,
 只有它驗證得到 proxy 導向、cookie 屬性這些建置後才定案的行為。
@@ -19,6 +20,7 @@ import subprocess
 import zlib
 from base64 import b64encode
 
+from tools.commands import backup
 from tools.compose import compose, container_running
 from tools.env import REPO_ROOT, deny_on_production, fail, load_env, parse_env_file
 
@@ -149,6 +151,12 @@ def cmd_check(base: dict[str, str]) -> None:
         up(env, *(() if prebuilt else ("--build",)))
         reset_data(env)
         status = playwright(env, *(("--shard", shard) if shard else ()))
+        if status == 0:
+            # 整套系統只有這裡真的在跑: 順便實際備份再還原一次 (tools/commands/backup.py)。
+            try:
+                backup.verify_roundtrip(env)
+            except (SystemExit, subprocess.CalledProcessError):
+                status = 1
         if status != 0:
             # 失敗時把各服務的 log 留在輸出裡: 環境馬上就拆掉了。
             run_compose(env, "logs", "--no-color", "--tail", "200", check=False)

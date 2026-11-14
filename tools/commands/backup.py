@@ -23,7 +23,14 @@ from datetime import datetime
 from pathlib import Path
 
 from tools import backups
-from tools.compose import WRITERS, container, container_running, containers, paused
+from tools.compose import (
+    WRITERS,
+    container,
+    container_running,
+    containers,
+    entry_responds,
+    paused,
+)
 from tools.env import app_version, confirm, fail, load_env, require_env, require_mode
 
 USAGE = (__doc__ or "").split("\n\n")[1]
@@ -135,7 +142,18 @@ def restore(env: dict[str, str], target: str, file: str | None) -> None:
         fail(f"這是 v{backup.version} 的備份，目前是 v{version}；先部署回 v{backup.version} 再還原")
     what = "資料庫的資料" if target == "db" else "所有上傳的檔案"
     confirm(f"將先完整備份一次，再以 {backup.label} 的備份取代目前{what}，確定？")
+    apply_restore(env, target, path)
+    print(f"還原完成：{backup.label}")
+    other = {"dump": "tar", "tar": "dump"}[kind]
+    sibling = path.with_name(f"{backup.stem}.{other}")
+    if sibling.is_file():
+        # 資料庫的紀錄會指到上傳的檔案: 兩邊要來自同一組備份才對得起來。
+        other_target = "uploads" if target == "db" else "db"
+        print(f"同一組備份的另一半還沒還原：make backup restore {other_target} {sibling}")
 
+
+def apply_restore(env: dict[str, str], target: str, path: Path) -> None:
+    """實際還原, 不問確認: 人下的指令由 `restore()` 先問過, 自動化的驗證直接呼叫這裡。"""
     if target == "db":
         # 整個還原包在一個交易裡: 中途失敗就整批回滾, 資料庫維持還原之前的樣子。
         script = (
@@ -159,13 +177,62 @@ def restore(env: dict[str, str], target: str, file: str | None) -> None:
         with path.open("rb") as source:
             if subprocess.run(command, stdin=source, check=False).returncode != 0:
                 fail("還原失敗（原因見上方訊息）：資料維持還原之前的樣子")
-    print(f"還原完成：{backup.label}")
-    other = {"dump": "tar", "tar": "dump"}[kind]
-    sibling = path.with_name(f"{backup.stem}.{other}")
-    if sibling.is_file():
-        # 資料庫的紀錄會指到上傳的檔案: 兩邊要來自同一組備份才對得起來。
-        other_target = "uploads" if target == "db" else "db"
-        print(f"同一組備份的另一半還沒還原：make backup restore {other_target} {sibling}")
+
+
+ROUNDTRIP_MARKER = "backup_roundtrip_marker"
+# 備份之後才出現的資料: 用平台自己的資料表, 不依賴任何模組。
+MARKER_INSERT = (
+    "INSERT INTO audit_logs (id, created_at, event, actor_id, ip, request_id, committed, data) "
+    "VALUES (gen_random_uuid(), now(), 'backup_roundtrip_marker', '-', '-', '-', true, '{}')"
+)
+MARKER_COUNT = "SELECT count(*) FROM audit_logs WHERE event = 'backup_roundtrip_marker'"
+
+
+def _psql(env: dict[str, str], query: str) -> str:
+    script = 'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atqc "$1"'
+    command = ["docker", "exec", container(env, "postgres"), "sh", "-c", script, "sh", query]
+    return subprocess.run(command, check=True, text=True, capture_output=True).stdout.strip()
+
+
+def _marker_file_exists(env: dict[str, str]) -> bool:
+    command = uploads_command(env, "test", "-e", f"{UPLOADS_DIR}/.{ROUNDTRIP_MARKER}")
+    return subprocess.run(command, check=False).returncode == 0
+
+
+def verify_roundtrip(env: dict[str, str]) -> None:
+    """實際備份、改資料、再還原, 確認資料回到備份當時的樣子 (make e2e check 呼叫)。
+
+    還原指令壞掉的時候沒有任何症狀, 要到真的需要還原才會發現; 所以每次 CI 都對拋棄式的環境
+    實際做一次。備份檔寫在暫存目錄, 不留在 backups/。
+    """
+    original = backups.BACKUP_DIR
+    with tempfile.TemporaryDirectory() as directory:
+        backups.BACKUP_DIR = Path(directory)
+        try:
+            backup_all(env)
+            dump, uploads = (
+                backups.list_backups("dump")[0].path,
+                backups.list_backups("tar")[0].path,
+            )
+
+            _psql(env, MARKER_INSERT)
+            marker_file = f"{UPLOADS_DIR}/.{ROUNDTRIP_MARKER}"
+            subprocess.run(uploads_command(env, "touch", marker_file, writable=True), check=True)
+            if _psql(env, MARKER_COUNT) != "1" or not _marker_file_exists(env):
+                fail("備份還原驗證：標記沒有寫進去，驗證本身有問題")
+
+            apply_restore(env, "db", dump)
+            apply_restore(env, "uploads", uploads)
+
+            if _psql(env, MARKER_COUNT) != "0":
+                fail("備份還原驗證：資料庫還原之後，備份之後才新增的紀錄還在")
+            if _marker_file_exists(env):
+                fail("備份還原驗證：上傳的檔案還原之後，備份之後才新增的檔案還在")
+            if not entry_responds(env):
+                fail("備份還原驗證：還原之後入口沒有回應")
+        finally:
+            backups.BACKUP_DIR = original
+    print("備份還原驗證：通過")
 
 
 def run(_name: str, args: list[str]) -> None:
