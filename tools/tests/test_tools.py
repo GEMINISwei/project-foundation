@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from tools import backups, compose
-from tools.commands import check, doctor, logs, release
+from tools.commands import check, doctor, logs, release, services
 from tools.env import REPO_ROOT, parse_env_file
 
 
@@ -508,3 +508,56 @@ def test_doctor_skips_the_nginx_section_without_host_nginx(monkeypatch):
     doctor.check_host_nginx({"SYSTEM_PORT": "3000"})
     assert doctor.results == [("正常", "Nginx", "未安裝")]
     assert "Nginx 相關" not in doctor.render(doctor.results)
+
+
+def test_status_lists_containers_and_volumes_in_two_aligned_sections():
+    lines = services.status_lines(
+        [
+            ("app-nginx", "Up 3 minutes"),
+            ("app-migrate", "Exited (0) 47 minutes ago"),
+            # worker 開多份時每一份各一行: 這裡看的是容器本身。
+            ("app-worker-1", "Up 3 minutes (healthy)"),
+            ("app-worker-2", "Up 3 minutes (healthy)"),
+        ],
+        [("app_production_postgres_data", True), ("app_production_uploads", True)],
+    )
+    assert lines == [
+        "Container",
+        "app-nginx                     Up 3 minutes",
+        "app-migrate                   Exited (0) 47 minutes ago",
+        "app-worker-1                  Up 3 minutes (healthy)",
+        "app-worker-2                  Up 3 minutes (healthy)",
+        "",
+        "Volume",
+        "app_production_postgres_data  Used",
+        "app_production_uploads        Used",
+    ]
+
+
+def test_status_marks_volumes_no_container_uses():
+    # 同一台機器換過模式之後留下來的 volume: 要看得出它還在、而且沒有人在用。
+    lines = services.status_lines(
+        [], [("app_development_uploads", False), ("app_production_uploads", True)]
+    )
+    assert lines == [
+        "Container",
+        "(none)",
+        "",
+        "Volume",
+        "app_development_uploads  Unused",
+        "app_production_uploads   Used",
+    ]
+
+
+def test_status_volumes_shows_full_names_and_sizes_without_a_total():
+    lines = services.volume_lines(
+        [
+            ("app_production_postgres_data", "65.6MB", True),
+            ("app_development_uploads", "0B", False),
+        ]
+    )
+    assert lines == [
+        "Volume                        Size    Status",
+        "app_production_postgres_data  65.6MB  Used",
+        "app_development_uploads       0B      Unused",
+    ]
