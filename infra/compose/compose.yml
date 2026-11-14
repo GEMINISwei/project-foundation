@@ -21,6 +21,9 @@ x-healthcheck: &healthcheck
   start_interval: 1s
   retries: 3
 
+# 長駐的服務一律 `restart: unless-stopped`: 自己掛掉會重啟, 主機重開機後也會起來, 但被刻意停下的
+# (部署或還原失敗後停在維護狀態) 維持停止。`always` 會在 Docker 重啟時把它們開回來,
+# 沒通過檢查的版本就開始接流量。
 services:
   postgres:
     container_name: ${COMPOSE_PROJECT_NAME:?}-postgres
@@ -40,7 +43,7 @@ services:
       <<: *healthcheck
       # -h 127.0.0.1: 走 unix socket 的話 initdb 期間就會提早轉綠。
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-    restart: always
+    restart: unless-stopped
 
   # 一次性的 migration 與 seed。api 與 worker 等它成功才啟動, 不會出現新程式配舊資料。
   migrate:
@@ -68,7 +71,7 @@ services:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
     # 給進行中的請求時間做完 (uvicorn 收到 SIGTERM 後不再接新連線)。
     stop_grace_period: 30s
-    restart: always
+    restart: unless-stopped
     expose:
       - "8000"
 
@@ -92,7 +95,7 @@ services:
     # 收到 SIGTERM 會做完手上的任務再結束: 單一任務的時間上限 (shared/jobs 的 MAX_TIMEOUT_SECONDS)
     # 加 30 秒寫入完成狀態。
     stop_grace_period: 330s
-    restart: always
+    restart: unless-stopped
 
   web:
     container_name: ${COMPOSE_PROJECT_NAME:?}-web
@@ -114,7 +117,7 @@ services:
       <<: *healthcheck
       # 探 /healthz 而不是真實頁面: 頁面會打後端, web 的健康狀態會跟著 api 一起紅。
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000 && printf 'GET /healthz HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
-    restart: always
+    restart: unless-stopped
     expose:
       - "3000"
 
@@ -134,7 +137,7 @@ services:
     depends_on:
       web:
         condition: service_healthy
-    restart: always
+    restart: unless-stopped
 
 volumes:
   postgres_data:
