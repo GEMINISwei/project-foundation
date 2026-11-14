@@ -3,6 +3,7 @@
 import shlex
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -330,12 +331,180 @@ def test_doctor_checks_every_worker_replica(monkeypatch):
     lines = ["api\trunning\thealthy", "worker\trunning\thealthy", "worker\texited\t"]
     output = subprocess.CompletedProcess([], 0, stdout="\n".join(lines) + "\n", stderr="")
     monkeypatch.setattr(doctor, "compose", lambda *_args, **_kwargs: output)
+    monkeypatch.setattr(doctor, "job_counts", lambda _env: None)
     monkeypatch.setattr(doctor, "results", [])
     assert not doctor.check_services(ENV)
-    assert ("錯誤", "服務 worker") in [(status, name) for status, name, _ in doctor.results]
+    assert ("錯誤", "worker") in [(status, name) for status, name, _ in doctor.results]
 
 
 def test_doctor_reports_a_journal_it_cannot_read(unreadable_journal, monkeypatch):
     monkeypatch.setattr(doctor, "results", [])
     doctor.check_journal(JOURNALD_ENV)
-    assert [(status, name) for status, name, _ in doctor.results] == [("錯誤", "log 查詢")]
+    assert [(status, name) for status, name, _ in doctor.results] == [("錯誤", "Log")]
+
+
+def test_doctor_output_is_grouped_and_aligned():
+    lines = doctor.render(
+        [
+            ("正常", "System", "My App v0.2.1 (production)"),
+            ("正常", "nginx", "執行中"),
+            ("警告", "Header", "缺少 X-Forwarded-Proto (cookie 不會帶 Secure)"),
+            # 資料庫結構要等服務檢查完才讀得到, 但屬於第一區。
+            ("正常", "Database", "2f478491f1fa"),
+            ("正常", "postgres", "執行中"),
+        ]
+    )
+    assert lines == [
+        "架構環境",
+        "[正常] System    My App v0.2.1 (production)",
+        "[正常] Database  2f478491f1fa",
+        "",
+        "容器服務",
+        "[正常] nginx     執行中",
+        "[正常] postgres  執行中",
+        "",
+        "Nginx 相關",
+        "[警告] Header    缺少 X-Forwarded-Proto (cookie 不會帶 Secure)",
+    ]
+
+
+def test_doctor_summarises_workers_and_jobs_on_one_line():
+    running = ("running", "healthy")
+    assert doctor.worker_line([running, running], (0, 0)) == (
+        "正常",
+        "2 支運轉中、待處理 0 筆、失敗 0 筆",
+    )
+    assert doctor.worker_line([running, running], (20, 3)) == (
+        "警告",
+        "2 支運轉中、待處理 20 筆、失敗 3 筆 (make jobs list failed)",
+    )
+    status, detail = doctor.worker_line([running, ("exited", "")], (0, 0))
+    assert (status, detail.split("、")[:2]) == ("錯誤", ["1 支運轉中", "1 支 exited"])
+    # 資料庫讀不到時只報 worker 本身。
+    assert doctor.worker_line([running], None) == ("正常", "1 支運轉中")
+
+
+HOST_NGINX = """
+server {
+    listen 80;
+    server_name app.example.com;
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl http2;
+    server_name app.example.com;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    ssl_certificate /etc/letsencrypt/live/app.example.com/fullchain.pem;
+    client_max_body_size 16m;
+    location / {
+        proxy_pass http://127.0.0.1:3000;   # 這套的 SYSTEM_PORT
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+"""
+
+
+def test_doctor_finds_the_host_nginx_block_for_this_port():
+    lines, domains = doctor.host_nginx_lines({"my-app": HOST_NGINX}, "3000")
+    assert lines == [
+        ("正常", "Host", "my-app → 127.0.0.1:3000"),
+        ("正常", "Config", "X-Real-IP、X-Forwarded-Proto、上傳上限 16m、HSTS"),
+    ]
+    assert domains == ["app.example.com"]
+
+    # 同主機的另一套系統: 別人的設定不能算成自己的。
+    lines, domains = doctor.host_nginx_lines({"my-app": HOST_NGINX}, "3001")
+    assert [(status, name) for status, name, _ in lines] == [("警告", "Host")]
+    assert "127.0.0.1:3001" in lines[0][2]
+    assert domains == []
+
+
+def test_doctor_lists_each_missing_host_nginx_setting():
+    without_proto_and_hsts = "\n".join(
+        line
+        for line in HOST_NGINX.splitlines()
+        if "X-Forwarded-Proto" not in line and "Strict-Transport-Security" not in line
+    )
+    lines, _ = doctor.host_nginx_lines({"my-app": without_proto_and_hsts}, "3000")
+    assert lines[:2] == [
+        ("正常", "Host", "my-app → 127.0.0.1:3000"),
+        ("正常", "Config", "X-Real-IP、上傳上限 16m"),
+    ]
+    assert [(status, name, detail.split(" ")[1]) for status, name, detail in lines[2:]] == [
+        ("警告", "Header", "X-Forwarded-Proto"),
+        ("警告", "Header", "HSTS"),
+    ]
+
+    bare = (
+        "server { listen 443 ssl; server_name a.example.com; "
+        "location / { proxy_pass http://localhost:3000; } }"
+    )
+    lines, _ = doctor.host_nginx_lines({"bare": bare}, "3000")
+    assert [(status, name) for status, name, _ in lines] == [
+        ("正常", "Host"),
+        ("警告", "Header"),
+        ("警告", "Header"),
+        ("警告", "Upload"),
+        ("警告", "Header"),
+    ]
+
+    # 還沒申請憑證: 只有 HTTP 的設定不檢查 HSTS, 也沒有憑證可以查。
+    http_only = (
+        "server { listen 80; server_name a.example.com; client_max_body_size 16m; "
+        "location / { proxy_pass http://127.0.0.1:3000; proxy_set_header X-Real-IP $remote_addr; "
+        "proxy_set_header X-Forwarded-Proto $scheme; } }"
+    )
+    lines, domains = doctor.host_nginx_lines({"plain": http_only}, "3000")
+    assert [(status, name) for status, name, _ in lines] == [
+        ("正常", "Host"),
+        ("正常", "Config"),
+        ("警告", "Cert"),
+    ]
+    assert domains == []
+
+
+def test_doctor_follows_includes_in_the_host_nginx_config():
+    # Ubuntu 內建的 /etc/nginx/proxy_params 就有這兩個標頭。
+    included = {
+        "proxy_params": "proxy_set_header X-Real-IP $remote_addr;\n"
+        "proxy_set_header X-Forwarded-Proto $scheme;\n"
+    }
+    conf = """
+    server {
+        listen 443 ssl;
+        server_name app.example.com;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        client_max_body_size 16m;
+        location / {
+            proxy_pass http://127.0.0.1:3000;
+            include proxy_params;
+        }
+    }
+    """
+    lines, _ = doctor.host_nginx_lines({"my-app": conf}, "3000", include=included.get)
+    assert [(status, name) for status, name, _ in lines] == [("正常", "Host"), ("正常", "Config")]
+
+
+def test_doctor_reports_certificate_expiry_by_severity():
+    now = datetime(2026, 11, 14, tzinfo=UTC)
+    domain = "app.example.com"
+    assert doctor.certificate_line(domain, now + timedelta(days=67), "", now) == (
+        "正常",
+        "app.example.com (剩下 67 天，2027-01-20 到期)",
+    )
+    # certbot 在剩 30 天時就會更新: 剩這麼少代表自動更新沒有在運作。
+    assert doctor.certificate_line(domain, now + timedelta(days=10), "", now)[0] == "警告"
+    assert doctor.certificate_line(domain, None, "expired", now)[0] == "錯誤"
+    assert doctor.certificate_line(domain, None, "mismatch", now)[0] == "錯誤"
+    # 連不上不等於憑證有問題。
+    assert doctor.certificate_line(domain, None, "unreachable", now)[0] == "警告"
+
+
+def test_doctor_skips_the_nginx_section_without_host_nginx(monkeypatch):
+    monkeypatch.setattr(doctor, "nginx_binary", lambda: None)
+    monkeypatch.setattr(doctor, "results", [])
+    doctor.check_host_nginx({"SYSTEM_PORT": "3000"})
+    assert doctor.results == [("正常", "Nginx", "未安裝")]
+    assert "Nginx 相關" not in doctor.render(doctor.results)
