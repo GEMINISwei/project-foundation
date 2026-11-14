@@ -19,7 +19,7 @@ make db superuser
 
 ```bash
 make doctor          # 一次列出版本、設定、各服務狀態的問題
-make status          # 各容器的狀態
+make status          # 這個專案在 Docker 上的 container 與 volume
 make logs api        # 看某個服務的 log
 ```
 
@@ -44,7 +44,8 @@ make logs api        # 看某個服務的 log
 | 指令 | 用途 |
 |---|---|
 | `make init dev\|prod` | 產生 `.env`、檢查環境；`dev` 另外安裝相依 |
-| `make start`、`make stop`、`make status` | 啟動、停止、狀態 |
+| `make start`、`make stop` | 啟動、停止 |
+| `make status`、`make status volumes` | Docker 上的 container 與 volume；各 volume 的容量 |
 | `make logs [服務]`、`make logs trace <id>`、`make logs errors [分鐘]` | 看 log、追一次請求、列出最近的錯誤 |
 | `make doctor` | 檢查這台機器與執行中的服務 |
 | `make db psql\|superuser\|revoke-sessions\|migration\|reset` | 資料庫與帳號 |
