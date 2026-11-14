@@ -41,7 +41,7 @@ make e2e up                           # 起一套常駐的 E2E 開發環境 (獨
 make e2e test tests/auth/login.spec.ts
 make e2e grep "登出"
 make e2e down
-make e2e check                        # 用正式環境的映像檔跑全部, CI 跑的就是這個
+make e2e check                        # 用正式環境的映像檔跑全部, 再實際備份還原一次; CI 跑的就是這個
 ```
 
 - 每次 `test` 前會把資料重設成只有一個超管；測試要的資料自己建（`tests/support.ts`）。
