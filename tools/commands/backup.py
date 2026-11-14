@@ -5,11 +5,11 @@
     make backup restore db [檔案]       還原資料庫 (只接受目前版本的備份)
     make backup restore uploads [檔案]  還原上傳的檔案 (任何版本的備份都可以)
 
-備份期間會停掉所有會寫資料的來源 (對外入口與 worker, 等進行中的請求與任務做完), 資料庫與上傳的
-檔案才是同一個時間點; 完成或失敗都會開回來。資料庫與上傳的檔案都成功才留下這一組備份。
+備份期間會停掉所有會寫資料的服務 (對外入口、web、api 與 worker, 等進行中的請求與任務做完),
+資料庫與上傳的檔案才是同一個時間點; 完成或失敗都會開回來。資料庫與上傳的檔案都成功才留下這一組備份。
 
-還原之前一定先完整備份一次: 選錯檔案還退得回來, 這次備份失敗就不還原。還原期間連 web 與 api
-也停掉; 還原失敗時服務維持停止, 不會自動接回流量。只需要 postgres 在執行, 所以部署失敗後停在
+還原之前一定先完整備份一次: 選錯檔案還退得回來, 這次備份失敗就不還原。還原失敗時服務維持停止,
+不會自動接回流量。只需要 postgres 在執行, 所以部署失敗後停在
 維護狀態時一樣能還原。
 """
 
@@ -87,8 +87,9 @@ def backup_all(env: dict[str, str]) -> None:
     partial = {final: final.with_name(final.name + ".partial") for final in (dump, uploads)}
     pg_dump = 'exec pg_dump -Fc --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 
-    # api 不必停: 入口關了就沒有請求進得來, 剩下會自己寫資料的只有 worker。
-    with paused(env, ("nginx", "worker"), resume_on_failure=True):
+    # 只關入口不夠: 已經進到 web、api 的請求還在跑, 會在匯出途中寫入, 資料庫與上傳的檔案就
+    # 不是同一個時間點。全部停下 (docker stop 會等它們收尾) 才開始。
+    with paused(env, WRITERS, resume_on_failure=True):
         try:
             dump_to(
                 partial[dump], ["docker", "exec", container(env, "postgres"), "sh", "-c", pg_dump]
