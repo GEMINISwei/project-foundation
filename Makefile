@@ -1,7 +1,7 @@
 # 指令的實作在 tools/ (Python 標準函式庫, 可以不經 make 執行: python3 -m tools <指令>)。
 # 新增指令 = 在 tools/commands/ 加一個模組並登記到 tools/__main__.py, 再把名稱加進 TARGETS。
 
-TARGETS = init start stop status logs db jobs backup check e2e gen-types release doctor
+TARGETS = init start stop status logs db jobs backup check e2e gen-types release doctor pipeline
 
 .DEFAULT_GOAL := help
 .PHONY: help $(TARGETS)

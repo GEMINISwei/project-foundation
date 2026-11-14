@@ -5,17 +5,14 @@
     make db revoke-sessions    讓所有人都要重新登入
     make db migration "說明"   依 model 的變動產生一支 migration (僅開發環境)
     make db reset              清空資料庫並重建 (僅開發環境)
-    make db revision           印出資料庫目前的 migration 版本 (部署流程用; 還沒有資料時不印)
 
 還原備份見 make backup。
 """
 
 from __future__ import annotations
 
-import subprocess
-
 from tools.compose import app_cli, docker_exec
-from tools.env import confirm, deny_on_production, fail, load_env, require_env, require_mode
+from tools.env import confirm, deny_on_production, fail, load_env, require_env
 
 USAGE = (__doc__ or "").split("\n\n")[1]
 
@@ -24,24 +21,6 @@ MIGRATION_REMINDER = """
   - 資料：往有資料的表加 NOT NULL 欄位，它只寫 ADD COLUMN，不會回填
   - 改名：欄位或表改名會被看成刪一個、加一個，照著跑資料就沒了
   - 不能在交易裡執行的 DDL（CREATE INDEX CONCURRENTLY）"""
-
-
-def print_revision(env: dict[str, str]) -> None:
-    """部署前用來確認資料庫不會往回。全新的主機 (連資料 volume 都沒有) 什麼都不印。"""
-    volume = f"{env['COMPOSE_PROJECT_NAME']}_{require_mode(env)}_postgres_data"
-    volumes = subprocess.run(
-        ["docker", "volume", "ls", "-q"], capture_output=True, text=True, check=True
-    ).stdout.split()
-    if volume not in volumes:
-        return
-    query = (
-        "SELECT version_num FROM alembic_version "
-        "WHERE to_regclass('public.alembic_version') IS NOT NULL"
-    )
-    script = 'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atq -c "$1"'
-    # 有資料卻連不上資料庫時讓它失敗: 主機的狀態不是預期的, 不能當成「沒有版本」放行。
-    result = docker_exec(env, "postgres", ["sh", "-c", script, "sh", query], capture=True)
-    print(result.stdout.strip())
 
 
 def run(_name: str, args: list[str]) -> None:
@@ -68,7 +47,5 @@ def run(_name: str, args: list[str]) -> None:
         confirm("資料庫的資料將被清空並重建初始資料，確定？")
         app_cli(env, "reset")
         app_cli(env, "migrate")
-    elif action == "revision" and not rest:
-        print_revision(env)
     else:
         fail(USAGE)

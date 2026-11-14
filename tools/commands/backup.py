@@ -174,12 +174,6 @@ def run(_name: str, args: list[str]) -> None:
     require_mode(env)
     if not args:
         backup_all(env)
-    elif args == ["allow-fresh"]:
-        # 部署流程用: 第一次部署還沒有資料, 沒有東西可以備份。
-        if is_fresh_host(env):
-            print("還沒有任何資料（第一次部署），略過備份")
-        else:
-            backup_all(env)
     elif len(args) == 2 and args[0] == "prune" and args[1].isdigit() and int(args[1]) > 0:
         doomed = backups.to_prune(int(args[1]))
         for path in doomed:
