@@ -740,3 +740,36 @@ def test_an_entry_that_does_not_respond_is_closed_again_in_production(start_call
     with pytest.raises(SystemExit):
         start.bring_up(PRODUCTION, {}, production=True)
     assert calls[-1] == ("compose", "stop", "nginx")
+
+
+def test_backup_stops_everything_that_can_write_before_dumping(tmp_path, monkeypatch):
+    # 只停入口與 worker 的話, 已經進到 api 的請求還會寫入: 資料庫與上傳的檔案會備到不同的時間點。
+    from contextlib import contextmanager
+
+    steps = []
+
+    @contextmanager
+    def paused(_env, services_, *, resume_on_failure):
+        steps.append(("paused", tuple(services_), resume_on_failure))
+        yield
+        steps.append(("resumed",))
+
+    def dump_to(path, _command):
+        steps.append(("dump",))
+        path.write_bytes(b"data")
+
+    monkeypatch.setattr(backups, "BACKUP_DIR", tmp_path)
+    monkeypatch.setattr(backup, "paused", paused)
+    monkeypatch.setattr(backup, "container_running", lambda *_args: True)
+    monkeypatch.setattr(backup, "uploads_command", lambda *_args, **_kwargs: ["tar"])
+    monkeypatch.setattr(backup, "dump_to", dump_to)
+    monkeypatch.setattr(backup, "save_logs", lambda *_args: None)
+
+    backup.backup_all(DEVELOPMENT)
+
+    assert steps == [
+        ("paused", ("nginx", "web", "api", "worker"), True),
+        ("dump",),
+        ("dump",),
+        ("resumed",),
+    ]
