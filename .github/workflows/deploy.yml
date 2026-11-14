@@ -42,9 +42,12 @@ run-name: >-
 #
 # 主機的首次設定與需要的 secrets 見 docs/foundation/operations.md〈自動部署〉。
 on:
-  # 不聽 `published`: 發布正式版時它會和 `released` 一起觸發, 同一個版本會部署兩次。
+  # pre-release 聽 `published`, 不聽 `prereleased`: 從草稿發布的 pre-release 不會送出 `prereleased`,
+  # 那樣發布就不會部署, 也沒有任何提示。正式版聽 `released` (發布正式版、或把 pre-release 改成
+  # 正式版時送出); 發布正式版時 `published` 也會一起送出, 那一次略過 (version 與 targets 的 if), 同一個
+  # 版本才不會部署兩次。
   release:
-    types: [prereleased, released]
+    types: [published, released]
   workflow_dispatch:
     inputs:
       tag:
@@ -62,12 +65,16 @@ permissions:
 # 一次執行可能部署好幾組, 所以整個 repo 的部署共用一個群組、依序跑: 兩次部署同時跑會互相
 # 蓋掉組名標籤。GitHub 的同一群組最多一個在跑、一個在等, 再排進來的會取消在等的那個。
 # 不取消進行中的部署: 砍在 migration 中途比多等一輪糟。
+# 略過的那一次 (正式版的 `published`) 放到另一個群組: 它排在後面的話, 會把還在等的那次真正的
+# 部署擠掉。
 concurrency:
-  group: deploy
+  group: ${{ github.event.action == 'published' && !github.event.release.prerelease && 'deploy-skipped' || 'deploy' }}
   cancel-in-progress: false
 
 jobs:
   version:
+    # 正式版的 `published` 略過: 同一次發布還有一個 `released`, 部署由那一次負責。
+    if: ${{ !(github.event.action == 'published' && !github.event.release.prerelease) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -131,6 +138,8 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
   targets:
+    # 正式版的 `published` 略過: 同一次發布還有一個 `released`, 部署由那一次負責。
+    if: ${{ !(github.event.action == 'published' && !github.event.release.prerelease) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -151,7 +160,7 @@ jobs:
         id: list
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EVENT_ACTION: ${{ github.event.action }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
           INPUT_TARGET: ${{ inputs.target }}
           PUBLISH_TARGETS: ${{ vars.PUBLISH_TARGETS }}
           PRE_RELEASE_TARGETS: ${{ vars.PRE_RELEASE_TARGETS }}
@@ -160,7 +169,7 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = workflow_dispatch ]; then
             source="Run workflow 的 target"
             targets="${INPUT_TARGET}"
-          elif [ "${EVENT_ACTION}" = prereleased ]; then
+          elif [ "${PRERELEASE}" = true ]; then
             source="repo Variable PRE_RELEASE_TARGETS"
             targets="${PRE_RELEASE_TARGETS}"
           else
@@ -233,7 +242,7 @@ jobs:
   # ci-result 失敗也算失敗, 不會在不知道 CI 結果的情況下部署。
   build:
     needs: [version, targets, ci-result, ci]
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && !failure() && needs.version.result == 'success' && needs.targets.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

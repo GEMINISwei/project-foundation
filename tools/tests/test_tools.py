@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from tools import __main__ as cli
 from tools import backups, compose
-from tools.commands import backup, check, db, doctor, logs, pipeline, release, services
+from tools.commands import backup, check, db, doctor, logs, pipeline, release, services, start
 from tools.env import REPO_ROOT, parse_env_file
 
 
@@ -683,3 +683,60 @@ def test_restore_can_run_without_a_prompt_for_the_automated_check(tmp_path, monk
         ("backup",),
         ("restore", True),
     ]
+
+
+@pytest.fixture
+def start_calls(monkeypatch):
+    """記下 make start 啟動服務那一段依序做了什麼。"""
+    calls = []
+    state = {"pending": {}, "entry": True}
+
+    def compose_(_env, *args, **_kwargs):
+        calls.append(("compose", *args))
+
+    def wait(_env, services_, *_args):
+        calls.append(("wait", *services_))
+        return state["pending"]
+
+    def entry(_env, *_args):
+        calls.append(("entry",))
+        return state["entry"]
+
+    monkeypatch.setattr(start, "compose", compose_)
+    monkeypatch.setattr(start, "wait_until_ready", wait)
+    monkeypatch.setattr(start, "entry_responds", entry)
+    return calls, state
+
+
+def test_the_entry_opens_only_after_every_other_service_is_ready(start_calls):
+    calls, _ = start_calls
+    start.bring_up(PRODUCTION, {}, production=True)
+    kinds = [call[:2] for call in calls]
+    assert kinds == [
+        ("compose", "up"),
+        ("wait", "postgres"),
+        ("compose", "up"),
+        ("wait", "nginx"),
+        ("entry",),
+    ]
+    first_up, second_up = calls[0], calls[2]
+    # 沒通過檢查的版本不接流量: 入口要等 worker 在內的服務都健康才啟動。
+    assert "nginx" not in first_up and {"api", "worker", "web"} <= set(first_up)
+    assert second_up[-1] == "nginx"
+    assert set(calls[1][1:]) == {"postgres", "api", "worker", "web"}
+
+
+def test_a_service_that_never_becomes_ready_leaves_the_entry_closed(start_calls):
+    calls, state = start_calls
+    state["pending"] = {"app-worker-1": "unhealthy"}
+    with pytest.raises(SystemExit):
+        start.bring_up(PRODUCTION, {}, production=True)
+    assert not [call for call in calls if "nginx" in call]
+
+
+def test_an_entry_that_does_not_respond_is_closed_again_in_production(start_calls):
+    calls, state = start_calls
+    state["entry"] = False
+    with pytest.raises(SystemExit):
+        start.bring_up(PRODUCTION, {}, production=True)
+    assert calls[-1] == ("compose", "stop", "nginx")
