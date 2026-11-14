@@ -138,6 +138,9 @@ compose 裡的 nginx **一定在主機的 reverse proxy 後面**：
 - 沒送 `X-Forwarded-Proto` → cookie 不帶 `Secure`。
 - `client_max_body_size` 沒設 → 超過 1MB 的上傳在主機就被擋下。
 
+在主機上跑 `make doctor` 會讀 `/etc/nginx` 的設定檔，找出轉送到這套系統 port 的那一段，列出缺少的項目與憑證還剩幾天
+（「Nginx 相關」那一區）。它讀的是檔案：改了還沒 reload 時看到的是新內容；寫法特殊（具名的 `upstream`）時會顯示找不到。
+
 容器 nginx 信任上一層的前提是**外部連不到它**。把 port 改綁 `0.0.0.0` 的話任何人都能自帶 `X-Real-IP` 冒充別人，
 而且 Docker 直接改 iptables，ufw 擋不住。`make check lint` 會檢查綁定位址與每個轉送的 location 都有覆寫標頭。
 
