@@ -13,7 +13,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "init": ("init", "建立 .env 並安裝相依：make init dev|prod"),
     "start": ("start", "啟動服務（會先跑 migration）；開發機可加 lan 對區網開放"),
     "stop": ("services", "停止服務（資料保留）"),
-    "status": ("services", "各容器的狀態與健康檢查結果"),
+    "status": ("services", "Docker 上的 container 與 volume；make status volumes 看容量"),
     "logs": ("logs", "看 log：make logs [服務]｜make logs trace <request-id>｜make logs errors"),
     "doctor": ("doctor", "檢查這台機器與執行中的服務，列出所有問題"),
     "db": ("db", "資料庫與帳號：psql、superuser、revoke-sessions、migration、reset"),
