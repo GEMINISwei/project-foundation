@@ -87,6 +87,7 @@ make db superuser
   4. 啟動新版，等每個服務的健康檢查通過，再從入口實際打一次（最多等 3 分鐘）。
 - **第 3、4 步失敗時指令會以失敗結束，對外入口維持關閉**：寧可停在維護狀態，也不讓不確定的版本接流量。
   看 `make logs errors` 找原因，修正後重新 `make start`；要退回上一版見〈回滾與 migration〉。
+  主機重開機或 Docker 重啟之後，被停下的服務也維持停止，不會自己接回流量。
 - **每次部署會中斷服務**，從第 2 步到第 4 步結束，通常幾十秒；手上有長任務時要多等它做完。挑離峰時段。
 - `MODE=production` 時會拒絕 `make db reset`、`make db migration`、`make check`、`make e2e`、
   `make gen-types`、`make release`。防的是手誤，不是權限控制。
