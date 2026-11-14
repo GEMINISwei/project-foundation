@@ -336,7 +336,7 @@ jobs:
           ENVIRONMENT: ${{ matrix.environment }}
         run: .github/scripts/deploy-ssh.sh "${ENVIRONMENT}"
       # 這份 Makefile 與 tools/ 經 SSH 的 stdin 送到主機的暫存目錄, 接上主機的 .env 跑
-      # `make db revision`; 主機的 repo 目錄一個檔案都不動。
+      # `make pipeline revision`; 主機的 repo 目錄一個檔案都不動。
       - name: 資料庫不會往回
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -351,12 +351,12 @@ jobs:
           tar -x -C "\${tmp}"
           ln -s $(printf %q "${DEPLOY_PATH}")/.env "\${tmp}/.env"
           cd "\${tmp}"
-          make db revision
+          make pipeline revision
           EOF
           )"
           revision="$(tar -c Makefile tools | ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" \
             -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" "bash -c $(printf %q "${remote}")")"
-          python3 -m tools check migration-direction target/apps/api/migrations/versions "${revision}"
+          python3 -m tools pipeline migration-direction target/apps/api/migrations/versions "${revision}"
 
   deploy:
     needs: [version, targets, build, migration-check]
@@ -414,7 +414,7 @@ jobs:
       # docker compose 才找得到。
       #
       # 備份失敗就中止: 有資料 volume 卻沒有在跑的資料庫, 代表主機狀態不是預期的, 該由人先看過。
-      # 全新主機 (連資料 volume 都沒有) 沒有東西可備份, allow-fresh 讓第一次部署直接過。
+      # 全新主機 (連資料 volume 都沒有) 沒有東西可備份, `make pipeline backup` 會略過, 第一次部署直接過。
       # 備份在 checkout 新 tag 之前: 備份檔名的版號取自這份 checkout, 這時它還是線上正在跑的版本,
       # 也就是這份資料的結構所屬的版本。回滾到那一版後, make backup restore db 才找得到它。
       # make backup 同時打包 uploads volume。備份期間 nginx 與 worker
@@ -458,7 +458,7 @@ jobs:
             echo '[ ! -d ~/.docker/cli-plugins ] || ln -s ~/.docker/cli-plugins "${DOCKER_CONFIG}/cli-plugins"'
             printf 'cd %q\n' "${DEPLOY_PATH}"
             echo 'step="備份"'
-            echo 'make backup allow-fresh'
+            echo 'make pipeline backup'
             echo 'step="取得 tag"'
             echo 'git fetch --force --tags origin'
             printf 'step=%q\n' "checkout ${TAG}"

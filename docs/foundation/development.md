@@ -39,7 +39,9 @@ make logs api        # 看某個服務的 log
 
 ## 指令
 
-`make help` 列出全部，`make <指令> help` 看子指令。實作在 `tools/`（Python 標準函式庫）。
+`make help` 依目前的狀態列出用得到的指令：還沒有 `.env` 時只有 `init`，正式環境不列開發用的
+（`check`、`gen-types`、`e2e`、`release`，下了也會被拒絕）。`make <指令> help` 看子指令。實作在 `tools/`
+（Python 標準函式庫）。`make pipeline` 是給部署流程呼叫的，不列在 help 裡。
 
 | 指令 | 用途 |
 |---|---|

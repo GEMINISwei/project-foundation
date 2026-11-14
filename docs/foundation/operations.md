@@ -182,7 +182,7 @@ Variable 沒設定或列出的組找不到 environment，這次就一套都不�
 
 每次部署：確認 tag 等於 `v<APP_VERSION>`、指向的 commit 在 `main` 上 → 確認它在 `main` 的 CI 通過（沒有就先跑）→
 逐套確認資料庫不會往回（見〈[回滾與 migration](#回滾與-migration)〉）→ 建兩份映像檔推到 GHCR →
-**一次一套**依序部署：SSH 到主機 → `make backup allow-fresh` → checkout 同一個 tag → 依 digest 拉映像檔並
+**一次一套**依序部署：SSH 到主機 → `make pipeline backup` → checkout 同一個 tag → 依 digest 拉映像檔並
 `make start` → `make status` → 清掉舊映像檔與過舊的備份。一套失敗不會中斷其他套；失敗的 job 會標出停在哪一步，
 修好之後 Re-run failed jobs。
 
