@@ -651,3 +651,35 @@ def test_old_automation_spellings_are_gone(monkeypatch):
     ):
         with pytest.raises(SystemExit):
             module.run(name, args)
+
+
+def test_restore_can_run_without_a_prompt_for_the_automated_check(tmp_path, monkeypatch):
+    # make e2e check 每次都實際備份再還原一次: 那裡沒有人可以回答確認。
+    from contextlib import contextmanager
+
+    dump = tmp_path / "app_v1.0.0_20261101_000000.dump"
+    dump.write_bytes(b"dump")
+    steps = []
+
+    @contextmanager
+    def paused(_env, services, *, resume_on_failure):
+        steps.append(("paused", tuple(services), resume_on_failure))
+        yield
+
+    def restore_command(command, **_kwargs):
+        steps.append(("restore", "pg_restore" in " ".join(command)))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(backup, "confirm", lambda _question: pytest.fail("不該問確認"))
+    monkeypatch.setattr(backup, "paused", paused)
+    monkeypatch.setattr(backup, "backup_all", lambda _env: steps.append(("backup",)))
+    monkeypatch.setattr(backup.subprocess, "run", restore_command)
+
+    backup.apply_restore(DEVELOPMENT, "db", dump)
+
+    # 還原前照樣先停下所有會寫資料的服務、先備份一次; 失敗時不自動恢復。
+    assert steps == [
+        ("paused", ("nginx", "web", "api", "worker"), False),
+        ("backup",),
+        ("restore", True),
+    ]
