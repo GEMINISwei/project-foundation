@@ -1,5 +1,8 @@
 """使用者對自己帳號的操作: 登入、登出、換密碼、改個人資料。"""
 
+import asyncio
+import time
+
 import pytest
 
 from modules.users import router
@@ -116,3 +119,36 @@ async def test_a_successful_login_clears_the_per_account_counter(client, monkeyp
     await login(client, "admin")
     await client.post("/api/users/login", json={"username": "admin", "password": "wrong-password"})
     await login(client, "admin")
+
+
+async def test_concurrent_password_changes_do_not_exhaust_the_connection_pool(client):
+    # 每個請求已經佔著一條連線 (查登入者) 時又去拿第二條 (限流計數), 同時進來的數量超過連線池
+    # 就會互相等到逾時: 全部回 500, 期間其他人的請求也拿不到連線。
+    headers = await admin_headers(client)
+    body = {"current_password": "wrong-password", "new_password": "Another#Pass123"}
+    started = time.monotonic()
+    responses = await asyncio.gather(
+        *(client.put("/api/users/me/password", headers=headers, json=body) for _ in range(20))
+    )
+    assert {response.status_code for response in responses} <= {403, 429}
+    # 連線池等不到連線時要 30 秒才逾時。
+    assert time.monotonic() - started < 15
+
+
+async def test_a_successful_password_change_does_not_reset_the_attempt_counter(client, monkeypatch):
+    monkeypatch.setattr(
+        router,
+        "password_change_limiter",
+        RateLimiter("password_change", max_attempts=2, window_seconds=60),
+    )
+    headers = await admin_headers(client)
+    url = "/api/users/me/password"
+    wrong = {"current_password": "wrong-password", "new_password": "Another#Pass123"}
+    assert (await client.put(url, headers=headers, json=wrong)).status_code == 403
+    changed = await client.put(
+        url, headers=headers, json={"current_password": PASSWORD, "new_password": "Brand-New#456"}
+    )
+    assert changed.status_code == 200
+    fresh = {"Authorization": f"Bearer {changed.json()['access_token']}"}
+    # 成功不把額度洗回來: 偷到登入狀態的人不能靠改一次密碼重新取得嘗試次數。
+    assert (await client.put(url, headers=fresh, json=wrong)).status_code == 429
