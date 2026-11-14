@@ -41,7 +41,8 @@
    拿到 `request_id` 再用 `make logs trace` 看那次請求的完整經過。
 
 log 的格式：api 與 worker 在正式環境是一行一筆 JSON（`event`、`level`、`request_id`、`user_id`…），
-web 伺服器端的錯誤與**瀏覽器端沒被接住的錯誤**（`event: client_error`）也是同樣的格式；nginx 的 access log
+web 伺服器端的錯誤與**瀏覽器端沒被接住的錯誤**（`event: client_error`）也是同樣的格式，這類回報有每分鐘的上限，
+超過的不記錄，只在那一分鐘結束時留一行 `client_error_dropped` 與筆數；nginx 的 access log
 每行帶 `[request id]`。時間一律 UTC。
 
 | 現象 | 先看 |
