@@ -46,7 +46,7 @@ DENY_MAIN = "不可以直接 push 到 main：main 只透過 PR 前進。"
 DENY_HOOKS = (
     "不要略過或關掉 git hook（--no-verify、commit -n、core.hooksPath）：照 hook 的訊息修正。"
 )
-DENY_MERGE = "合併 PR 與轉 Ready for review 由使用者做。回報 PR 狀態，等使用者處理。"
+DENY_MERGE = "合併 PR 由使用者做。回報 PR 狀態，等使用者處理。"
 DENY_DEPLOY = (
     f"發布與部署只能用 `{PUBLISH_COMMAND} <版號> [--prerelease]`，先用 preview.sh 給使用者看、"
     "使用者同意後才執行（release skill）。重新部署或回滾由使用者自己觸發。"
@@ -179,7 +179,7 @@ def git_violation(argv: list[str], cwd: str) -> str | None:
 
 
 def gh_violation(argv: list[str]) -> str | None:
-    if argv[1:3] == ["pr", "merge"] or (argv[1:3] == ["pr", "ready"] and "--undo" not in argv):
+    if argv[1:3] == ["pr", "merge"]:
         return DENY_MERGE
     if argv[1:2] == ["release"] and argv[2:3] and argv[2] in {"create", "edit", "delete"}:
         return DENY_DEPLOY
