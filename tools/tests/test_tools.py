@@ -793,7 +793,8 @@ def restore_steps(tmp_path, monkeypatch):
         steps.append(("resumed",))
 
     def run(command, **_kwargs):
-        steps.append(("db",) if "pg_restore" in " ".join(command) else ("uploads",))
+        text = " ".join(command)
+        steps.append(("db", text) if "pg_restore" in text else ("uploads", text))
         return subprocess.CompletedProcess(command, 0)
 
     def psql(_env, query):
@@ -822,9 +823,11 @@ def test_restoring_the_database_pushes_every_auth_version_past_the_old_maximum(r
     # 還原讓 auth_version 倒退, 已經撤銷的登入憑證會再次有效。只加一不夠: 備份之後撤銷過
     # 兩次以上的帳號, 中間那張憑證還是會復活。
     relevant = [step for step in steps if step[0] in ("psql", "db")]
-    assert [step[0] for step in relevant] == ["psql", "db", "psql"]
+    assert [step[0] for step in relevant] == ["psql", "db"]
     assert "max(auth_version)" in relevant[0][1]
-    assert "GREATEST(auth_version, 7) + 1" in relevant[2][1]
+    # 調高要跟還原在同一個交易裡: 分成兩步的話, 中間中斷再重試時讀到的最大值已經是倒退過的。
+    assert "GREATEST(auth_version, 7) + 1" in relevant[1][1]
+    assert "--single-transaction" in relevant[1][1]
 
 
 def test_restore_warns_to_rotate_the_secret_when_the_old_maximum_is_unreadable(
@@ -839,6 +842,24 @@ def test_restore_warns_to_rotate_the_secret_when_the_old_maximum_is_unreadable(
     # 資料庫壞到讀不出來正是需要還原的時候: 不能因此擋下還原。
     monkeypatch.setattr(backup, "_psql", broken)
     backup.apply_restore(DEVELOPMENT, "db", dump)
-    assert ("db",) in steps
-    assert not [step for step in steps if step[0] == "psql" and "UPDATE" in step[1]]
+    restored = [step for step in steps if step[0] == "db"]
+    assert len(restored) == 1 and "UPDATE" not in restored[0][1]
     assert "JWT_SECRET_KEY" in capsys.readouterr().out
+
+
+def test_restore_falls_back_to_a_raw_copy_when_the_current_data_cannot_be_dumped(
+    restore_steps, monkeypatch
+):
+    steps, dump = restore_steps
+
+    def failing_backup(_env):
+        steps.append(("backup",))
+        raise subprocess.CalledProcessError(1, "pg_dump")
+
+    # 資料壞到匯不出來正是最需要還原的時候: 不能因為還原前的備份做不成就擋下,
+    # 但壞掉之前的原始資料要留一份。
+    monkeypatch.setattr(backup, "backup_all", failing_backup)
+    monkeypatch.setattr(backup, "raw_copy", lambda _env: steps.append(("raw-copy",)))
+    backup.apply_restore(DEVELOPMENT, "db", dump)
+    order = [step[0] for step in steps if step[0] != "psql"]
+    assert order == ["paused", "backup", "raw-copy", "db", "resumed"]
