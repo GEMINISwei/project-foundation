@@ -22,7 +22,7 @@ disable-model-invocation: true
 
    **把規則的變化、每一項打算怎麼處理、每個衝突怎麼解列給使用者，確認之後才往下。**
 3. **套用**：`python3 .agents/skills/sync-foundation/scripts/sync.py apply`。它會改檔案並更新 `.foundation.json`，不 commit。
-   改到測試檔或防線檔案被擋下時，照 `AGENTS.md`〈高風險先問〉一次列出來申請。
+   改到既有的測試或防線檔案被擋下時，照 `AGENTS.md`〈授權界線〉一次列出來申請。
 4. **處理腳本沒辦法決定的**：
    - 有衝突標記的檔案：兩邊的意圖都保留，處理完確認沒有殘留的 `<<<<<<<`。
    - 「需要判斷」的檔案：照第 2 步談定的做法處理。

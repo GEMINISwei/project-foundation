@@ -3,7 +3,7 @@
 
 用法 (由 .claude/settings.json 與 .codex/hooks.json 呼叫): guard_commands.py <claude|codex>
 
-- deny: push 到 main、略過 git hook、合併／轉 Ready、發布與部署、自己寫放行
+- deny: push 到 main、略過 git hook、合併、發布與部署、自己寫放行
 - 確認: publish.sh、`gh api` 寫入、`gh run rerun`、有開著的 PR 時開新分支。
   Claude 回 ask; Codex 不支援 ask, 回 deny 並說明怎麼取得同意。
 
