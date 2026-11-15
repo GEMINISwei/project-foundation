@@ -863,3 +863,40 @@ def test_restore_falls_back_to_a_raw_copy_when_the_current_data_cannot_be_dumped
     backup.apply_restore(DEVELOPMENT, "db", dump)
     order = [step[0] for step in steps if step[0] != "psql"]
     assert order == ["paused", "backup", "raw-copy", "db", "resumed"]
+
+
+@pytest.fixture
+def revision_database(monkeypatch):
+    """假的資料庫: 資料 volume 已經存在; 回傳一個設定「版本表存不存在」的函式。"""
+    state = {"table": True}
+    volumes = subprocess.CompletedProcess(
+        [], 0, stdout="app_development_postgres_data\n", stderr=""
+    )
+    monkeypatch.setattr(pipeline.subprocess, "run", lambda *_args, **_kwargs: volumes)
+
+    def docker_exec(_env, _service, command, **_kwargs):
+        query = command[-1]
+        if "FROM alembic_version" in query:
+            if not state["table"]:
+                # PostgreSQL 在執行之前就檢查表名: 查詢裡自己判斷表存不存在也沒用。
+                raise subprocess.CalledProcessError(1, "psql")
+            output = "2f478491f1fa"
+        else:
+            output = "t" if state["table"] else "f"
+        return subprocess.CompletedProcess(command, 0, stdout=output + "\n", stderr="")
+
+    monkeypatch.setattr(pipeline, "docker_exec", docker_exec)
+    return state
+
+
+def test_revision_is_empty_when_the_database_has_no_migration_table_yet(revision_database, capsys):
+    # 第一次部署在 migration 之前就失敗: volume 已經建立, 但還沒有版本表。這時查不到版本
+    # 要當成「還沒跑過 migration」, 否則部署前的檢查會一直失敗, 修好了也重新部署不了。
+    revision_database["table"] = False
+    pipeline.print_revision(DEVELOPMENT)
+    assert capsys.readouterr().out.strip() == ""
+
+
+def test_revision_prints_the_current_migration_version(revision_database, capsys):
+    pipeline.print_revision(DEVELOPMENT)
+    assert capsys.readouterr().out.strip() == "2f478491f1fa"

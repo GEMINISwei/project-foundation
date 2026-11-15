@@ -30,14 +30,19 @@ def print_revision(env: dict[str, str]) -> None:
     ).stdout.split()
     if volume not in volumes:
         return
-    query = (
-        "SELECT version_num FROM alembic_version "
-        "WHERE to_regclass('public.alembic_version') IS NOT NULL"
-    )
     script = 'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atq -c "$1"'
-    # 有資料卻連不上資料庫時讓它失敗: 主機的狀態不是預期的, 不能當成「沒有版本」放行。
-    result = docker_exec(env, "postgres", ["sh", "-c", script, "sh", query], capture=True)
-    print(result.stdout.strip())
+
+    def query(sql: str) -> str:
+        # 有資料卻連不上資料庫時讓它失敗: 主機的狀態不是預期的, 不能當成「沒有版本」放行。
+        result = docker_exec(env, "postgres", ["sh", "-c", script, "sh", sql], capture=True)
+        return result.stdout.strip()
+
+    # 先確認版本表存在: 第一次部署在 migration 之前就失敗時, volume 已經建立但還沒有這張表。
+    # 不能合成一句用 WHERE 判斷: PostgreSQL 在執行之前就檢查表名, 表不存在整句都會出錯,
+    # 部署前的檢查就一直失敗, 修好了也重新部署不了。
+    if query("SELECT to_regclass('public.alembic_version') IS NOT NULL") != "t":
+        return
+    print(query("SELECT version_num FROM alembic_version"))
 
 
 def check_migration_direction(versions: str, db_revision: str) -> None:
