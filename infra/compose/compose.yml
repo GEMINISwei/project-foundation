@@ -28,7 +28,7 @@ services:
   postgres:
     container_name: ${COMPOSE_PROJECT_NAME:?}-postgres
     # 跨 major 升級要 pg_dump → 換版本 → pg_restore, 不是改版本號。
-    image: postgres:18.6-alpine
+    image: postgres:18.7-alpine
     environment:
       # 帳號與資料庫名稱寫死: 只有這個 compose 專案連得到, 指令在容器裡讀這兩個值。
       POSTGRES_USER: app

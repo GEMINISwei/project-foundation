@@ -32,7 +32,7 @@ USAGE = (__doc__ or "").split("\n\n")[1]
 API = REPO_ROOT / "apps/api"
 WEB = REPO_ROOT / "apps/web"
 COMPOSE_DIR = REPO_ROOT / "infra/compose"
-POSTGRES_IMAGE = "postgres:18.6-alpine"
+POSTGRES_IMAGE = "postgres:18.7-alpine"
 
 
 def sh(*command: str, cwd: Path = REPO_ROOT, env: dict[str, str] | None = None) -> None:
