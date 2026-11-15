@@ -9,8 +9,8 @@
 備份期間會停掉所有會寫資料的服務 (對外入口、web、api 與 worker, 等進行中的請求與任務做完),
 資料庫與上傳的檔案才是同一個時間點; 完成或失敗都會開回來。資料庫與上傳的檔案都成功才留下這一組備份。
 
-還原之前一定先完整備份一次: 選錯檔案還退得回來, 這次備份失敗就不還原。還原失敗時服務維持停止,
-不會自動接回流量。只需要 postgres 在執行, 所以部署失敗後停在維護狀態時一樣能還原。
+還原之前一定先完整備份一次: 選錯檔案還退得回來。目前的資料壞到匯不出來時, 改成把資料目錄
+原封不動複製一份 (backups/*.pgdata.tar) 再還原。還原失敗時服務維持停止, 不會自動接回流量。只需要 postgres 在執行, 所以部署失敗後停在維護狀態時一樣能還原。
 
 整個系統要退回某個時間點時用 restore all: 資料庫的紀錄會指到上傳的檔案, 兩邊要來自同一組備份,
 而且在同一次停機裡換完。還原資料庫之後所有人都要重新登入 (還原前簽發的登入憑證全部失效)。
@@ -31,8 +31,10 @@ from tools.compose import (
     container,
     container_running,
     containers,
+    describe,
     entry_responds,
     paused,
+    wait_for_containers,
 )
 from tools.env import app_version, confirm, fail, load_env, require_env, require_mode
 
@@ -45,8 +47,10 @@ def volume(env: dict[str, str], name: str) -> str:
     return f"{env['COMPOSE_PROJECT_NAME']}_{env['MODE']}_{name}"
 
 
-def uploads_command(env: dict[str, str], *command: str, writable: bool = False) -> list[str]:
-    """對 uploads volume 執行指令。用一次性的容器: api 停著的時候也要能備份與還原。"""
+def volume_command(
+    env: dict[str, str], name: str, path: str, *command: str, writable: bool = False
+) -> list[str]:
+    """把一個 volume 掛在 `path` 上執行指令。用一次性的容器: 服務停著的時候也要能備份與還原。"""
     postgres = container(env, "postgres")
     image = subprocess.run(
         ["docker", "inspect", "--format", "{{.Config.Image}}", postgres],
@@ -54,9 +58,13 @@ def uploads_command(env: dict[str, str], *command: str, writable: bool = False) 
         text=True,
         capture_output=True,
     ).stdout.strip()
-    mount = f"{volume(env, 'uploads')}:{UPLOADS_DIR}{'' if writable else ':ro'}"
+    mount = f"{volume(env, name)}:{path}{'' if writable else ':ro'}"
     # 借用 postgres 的映像檔: 主機上一定有, 不必為了 tar 再拉一個。
     return ["docker", "run", "--rm", "-i", "--entrypoint", "", "-v", mount, image, *command]
+
+
+def uploads_command(env: dict[str, str], *command: str, writable: bool = False) -> list[str]:
+    return volume_command(env, "uploads", UPLOADS_DIR, *command, writable=writable)
 
 
 def dump_to(path: Path, command: list[str]) -> None:
@@ -111,6 +119,34 @@ def backup_all(env: dict[str, str]) -> None:
             save_logs(env, stem.with_name(stem.name + ".logs.tar.gz"))
         except (subprocess.CalledProcessError, OSError):
             print("警告：log 沒有備份成功（資料庫與上傳的檔案已備份）")
+
+
+def raw_copy(env: dict[str, str]) -> None:
+    """匯不出來 (資料損壞) 時的退路: 停下資料庫, 把資料目錄與上傳的檔案原封不動複製一份。
+
+    不經過 pg_dump, 所以壞掉的資料也留得住。要用它時: 停下 postgres, 把 .pgdata.tar 的內容
+    解回資料 volume。檔名不是一般備份的格式, make backup prune 不會清掉它。
+    """
+    print("目前的資料匯不出來（可能已經損壞），改成保留一份原始資料再還原")
+    backups.ensure_private_dir()
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem = f"{env['COMPOSE_PROJECT_NAME']}_v{app_version()}_{stamp}"
+    data, uploads = (backups.BACKUP_DIR / f"{stem}.{kind}" for kind in ("pgdata.tar", "tar"))
+    postgres = container(env, "postgres")
+    copy_data = volume_command(env, "postgres_data", "/data", "tar", "-C", "/data", "-cf", "-", ".")
+    copy_uploads = uploads_command(env, "tar", "-C", UPLOADS_DIR, "-cf", "-", ".")
+    # 資料目錄要在資料庫停著的時候複製, 才是一致的一份。
+    subprocess.run(["docker", "stop", postgres], check=True, capture_output=True)
+    try:
+        dump_to(data, copy_data)
+        dump_to(uploads, copy_uploads)
+    finally:
+        subprocess.run(["docker", "start", postgres], check=True, capture_output=True)
+    pending = wait_for_containers([postgres])
+    if pending:
+        fail(f"資料庫沒有恢復正常：{describe(pending)}（原始資料已保留在 {data.name}）")
+    for path in (data, uploads):
+        print(f"已保留原始資料：{path.relative_to(backups.BACKUP_DIR.parent)}")
 
 
 def is_fresh_host(env: dict[str, str]) -> bool:
@@ -174,22 +210,42 @@ keep() {
     find "$dir" -mindepth 1 -maxdepth 1 \
         ! -name .restoring ! -name .previous ! -name .swapping "$@"
 }
+# 把 find 選到的東西搬進目錄 $1。用 `+` 不用 `\;`: 後者會吞掉 mv 的失敗, find 照樣以 0 結束,
+# 腳本就會繼續往下把還沒搬走的東西刪掉。
+move_to() { target="$1"; shift; "$@" -exec sh -c 'mv -- "$@" "$0"' "$target" {} +; }
 if [ -d "$old" ]; then
     if [ -d "$new" ]; then
         [ ! -e "$swapping" ] || keep -exec rm -rf {} +
-        find "$old" -mindepth 1 -maxdepth 1 -exec mv {} "$dir/" \;
+        move_to "$dir" find "$old" -mindepth 1 -maxdepth 1
+        # rmdir 而不是 rm -rf: 還有東西沒搬回來就停在這裡, 原本的檔案留著。
+        rmdir "$old"
+    else
+        rm -rf "$old"
     fi
-    rm -rf "$old"
 fi
 rm -rf "$new" "$swapping"
 mkdir "$new"
 tar -C "$new" -xf - || { rm -rf "$new"; exit 1; }
 mkdir "$old"
-keep -exec mv {} "$old/" \;
+move_to "$old" keep
+[ -z "$(keep | head -n 1)" ]
 touch "$swapping"
-find "$new" -mindepth 1 -maxdepth 1 -exec mv {} "$dir/" \;
+move_to "$dir" find "$new" -mindepth 1 -maxdepth 1
 rmdir "$new"
 rm -rf "$old" "$swapping"
+"""
+
+# 還原資料庫與調高 auth_version 在同一個交易裡 ($1 是調高的語句, 讀不到還原前的值時是空的):
+# 分成兩步的話, 還原成立、調高之前中斷再重試, 讀到的「還原前的最大值」已經是倒退過的。
+# 先把備份檔轉成 SQL 再整份交給 psql: pg_restore 自己的 --single-transaction 夾不進額外的語句。
+DATABASE_RESTORE = r"""
+set -e
+sql="$(mktemp)"
+trap 'rm -f "$sql"' EXIT
+pg_restore --clean --if-exists --no-owner --no-acl -f "$sql"
+[ -z "$1" ] || printf '%s\n' "$1" >> "$sql"
+psql -v ON_ERROR_STOP=1 --single-transaction -q \
+    -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f "$sql" > /dev/null
 """
 
 
@@ -202,23 +258,22 @@ def _restore_database(env: dict[str, str], path: Path) -> None:
     except (subprocess.CalledProcessError, ValueError):
         floor = None  # 資料庫壞到讀不出來正是需要還原的時候, 不能因此擋下還原。
 
-    # 整個還原包在一個交易裡: 中途失敗就整批回滾, 資料庫維持還原之前的樣子。
-    script = (
-        "exec pg_restore --clean --if-exists --no-owner --no-acl "
-        '--single-transaction --exit-on-error -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+    # floor 是剛從資料庫讀出來並轉成 int 的數字, 不是外部輸入。
+    # 要寫 public.users: 備份檔轉出來的 SQL 一開始就把 search_path 清空了。
+    raise_versions = (
+        ""
+        if floor is None
+        else f"UPDATE public.users SET auth_version = GREATEST(auth_version, {floor}) + 1;"  # noqa: S608  # 只代入 int
     )
-    command = ["docker", "exec", "-i", container(env, "postgres"), "sh", "-c", script]
-    _pipe(path, command)
-
+    postgres = container(env, "postgres")
+    _pipe(
+        path, ["docker", "exec", "-i", postgres, "sh", "-c", DATABASE_RESTORE, "sh", raise_versions]
+    )
     if floor is None:
         print(
             "警告：讀不到還原前的 auth_version，沒辦法保證舊的登入憑證失效。"
             "請換掉 .env 的 JWT_SECRET_KEY 再啟動（docs/foundation/operations.md〈帳號〉）"
         )
-        return
-    # floor 是剛從資料庫讀出來並轉成 int 的數字, 不是外部輸入。
-    update = f"UPDATE users SET auth_version = GREATEST(auth_version, {floor}) + 1"  # noqa: S608  # 只代入 int
-    _psql(env, update)
 
 
 def _restore_uploads(env: dict[str, str], path: Path) -> None:
@@ -240,7 +295,11 @@ def apply_restore(env: dict[str, str], target: str, path: Path) -> None:
     """
     # 還原期間不能有任何東西讀寫資料; 失敗時狀態不明, 服務維持停止等人確認。
     with paused(env, WRITERS, resume_on_failure=False):
-        backup_all(env)
+        try:
+            backup_all(env)
+        except subprocess.CalledProcessError:
+            # 資料壞到匯不出來正是最需要還原的時候: 不擋下還原, 改成把原始資料原封不動留一份。
+            raw_copy(env)
         if target in ("db", "all"):
             _restore_database(env, path)
         if target == "uploads":

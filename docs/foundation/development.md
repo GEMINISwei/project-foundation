@@ -84,10 +84,11 @@ make logs api        # 看某個服務的 log
 `# noqa`、`# type: ignore`、`eslint-disable`、`@ts-expect-error`、跳過測試，**同一行要寫理由**：
 
 ```python
-token_type: str = "bearer"  # noqa: S105 — 憑證的種類, 不是密碼
+token_type: str = "bearer"  # noqa: S105  # 憑證的種類, 不是密碼
 ```
 
-CI 的 `pr` 會檢查這個 PR 新增的抑制註解（`.github/scripts/check-pr-changes.py`）。
+Python 的理由寫在抑制註解後面的另一個 `#` 之後，ESLint 用 `-- 理由`。CI 的 `pr` 會檢查這個 PR 新增的
+抑制註解（`.github/scripts/check-pr-changes.py`），格式不對會被擋下。
 
 ### 相依版本
 

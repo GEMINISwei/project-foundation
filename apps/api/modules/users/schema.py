@@ -29,7 +29,7 @@ class LoginRequest(BaseModel):
 
 class Token(BaseModel):
     access_token: str
-    token_type: str = "bearer"  # noqa: S105 — 憑證的種類, 不是密碼
+    token_type: str = "bearer"  # noqa: S105  # 憑證的種類, 不是密碼
 
 
 class UserCreate(BaseModel):
