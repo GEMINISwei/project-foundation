@@ -9,11 +9,16 @@
 
 開發中寫測試用 up + test: 原始碼是 bind mount, 改了直接生效。check 用正式環境的建置結果,
 只有它驗證得到 proxy 導向、cookie 屬性這些建置後才定案的行為。
+
+check 跑完測試後再驗兩項執行期契約, 結果寫進 Job summary (docs/foundation/testing.md〈執行期契約〉):
+資料庫裡使用者輸入的文字與測試密碼沒有出現在 log、AUDIT 與任務的 payload;
+容器沒有寫入 volume 以外、重建就會消失的位置。
 """
 
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import socket
 import subprocess
@@ -93,9 +98,189 @@ def reset_data(env: dict[str, str]) -> None:
         fail(f"{error.stdout}{error.stderr}\n重設 E2E 環境的資料失敗（見上方訊息）")
 
 
+PLAYWRIGHT_IMPORT = re.compile(r"import\s*\{([^}]*)\}\s*from\s*[\"']@playwright/test[\"']")
+MIN_SECRET = 6
+ALLOWED_WRITES = (
+    "/tmp",  # noqa: S108  # 容器裡允許寫入的暫存位置, 不是在這裡建立暫存檔
+    "/run",
+    "/var/run",
+    "/var/cache/nginx",
+    "/etc/nginx/conf.d",
+    "/app/.next/cache",
+)
+
+
+def direct_playwright_imports(specs: dict[str, str]) -> list[str]:
+    found = []
+    for path, text in specs.items():
+        names = [
+            name.strip().split(" as ")[0].strip()
+            for match in PLAYWRIGHT_IMPORT.finditer(text)
+            for name in match.group(1).split(",")
+        ]
+        if "test" in names:
+            found.append(path)
+    return sorted(found)
+
+
+def find_leaks(values: dict[str, list[str]], sources: dict[str, str]) -> list[tuple[str, str, str]]:
+    leaks = []
+    for label, items in values.items():
+        for item in sorted({item for item in items if len(item) >= MIN_SECRET}):
+            for source, text in sources.items():
+                lines = [line.strip() for line in text.splitlines() if item in line]
+                leaks += [(label, source, line) for line in lines[:3]]
+    return leaks
+
+
+def unexpected_writes(
+    diffs: dict[str, list[str]], mounts: dict[str, list[str]] | None = None
+) -> list[tuple[str, str]]:
+    result = []
+    for container, lines in diffs.items():
+        paths = sorted({line.split(" ", 1)[1] for line in lines if " " in line})
+        roots = (*ALLOWED_WRITES, *(mounts or {}).get(container, ()))
+        for path in paths:
+            parent = any(other.startswith(path + "/") for other in paths)
+            allowed = any(path == root or path.startswith(root + "/") for root in roots)
+            if not parent and not allowed:
+                result.append((container, path))
+    return result
+
+
+def contracts_summary(leaks: list[tuple[str, str, str]], writes: list[tuple[str, str]]) -> str:
+    if not leaks and not writes:
+        return (
+            "執行期契約：使用者輸入沒有出現在 log、AUDIT 與任務裡，"
+            "容器也沒有寫入 volume 以外的位置。\n"
+        )
+    lines = ["### 執行期契約沒有通過", ""]
+    if leaks:
+        lines += ["#### 使用者輸入出現在 log、AUDIT 或任務裡", ""]
+        lines += ["| 欄位 | 出現在 | 那一行 |", "|---|---|---|"]
+        for label, source, line in leaks:
+            escaped = line.replace("|", "\\|")[:200]
+            lines.append(f"| {label} | {source} | {escaped} |")
+        lines.append("")
+    if writes:
+        lines += ["#### 寫在 volume 以外、重建容器就會消失", ""]
+        lines += [
+            "| 容器 | 路徑 |",
+            "|---|---|",
+            *(f"| {name} | {path} |" for name, path in writes),
+        ]
+        lines.append("")
+    return "\n".join(lines)
+
+
+def psql(env: dict[str, str], sql: str) -> list[str]:
+    result = subprocess.run(
+        ["docker", "exec", f"{env['COMPOSE_PROJECT_NAME']}-postgres",
+         "psql", "-U", "app", "-d", "app", "-At", "-c", sql],
+        capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    return result.stdout.splitlines()
+
+
+def user_input(env: dict[str, str]) -> dict[str, list[str]]:
+    columns = psql(
+        env,
+        "SELECT table_name || '.' || column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND data_type IN ('text', 'character varying') "
+        "AND table_name NOT IN ('audit_logs', 'jobs', 'alembic_version') "
+        "AND column_name NOT LIKE '%hash%' ORDER BY 1",
+    )
+    values = {}
+    for column in columns:
+        table, name = column.split(".")
+        values[column] = psql(
+            env,
+            f'SELECT DISTINCT "{name}" FROM "{table}" WHERE "{name}" IS NOT NULL',  # noqa: S608  # 表名與欄位名取自 information_schema, 不是外部輸入
+        )
+    return values
+
+
+def scanned_sources(env: dict[str, str]) -> dict[str, str]:
+    services = compose(
+        env, "ps", "-a", "--format", "{{.Service}}", capture=True, extra_env=env
+    ).stdout.split()
+    sources = {
+        f"{service} 的 log": compose(
+            env,
+            "logs",
+            "--no-color",
+            "--no-log-prefix",
+            service,
+            capture=True,
+            check=False,
+            extra_env=env,
+        ).stdout
+        for service in sorted(set(services))
+    }
+    sources["audit_logs"] = "\n".join(psql(env, "SELECT row_to_json(t)::text FROM audit_logs t"))
+    sources["jobs"] = "\n".join(psql(env, "SELECT row_to_json(t)::text FROM jobs t"))
+    return sources
+
+
+def container_mounts(env: dict[str, str]) -> dict[str, list[str]]:
+    names = compose(env, "ps", "-a", "--format", "{{.Name}}", capture=True, extra_env=env).stdout
+    prefix = f"{env['COMPOSE_PROJECT_NAME']}-"
+    template = "{{range .Mounts}}{{.Destination}} {{end}}"
+    return {
+        name.removeprefix(prefix): subprocess.run(
+            ["docker", "inspect", "-f", template, name], capture_output=True, text=True, check=True
+        ).stdout.split()
+        for name in sorted(names.split())
+    }
+
+
+def container_writes(env: dict[str, str]) -> dict[str, list[str]]:
+    names = compose(
+        env, "ps", "-a", "--format", "{{.Name}}", capture=True, extra_env=env
+    ).stdout.split()
+    prefix = f"{env['COMPOSE_PROJECT_NAME']}-"
+    return {
+        name.removeprefix(prefix): subprocess.run(
+            ["docker", "diff", name], capture_output=True, text=True, check=True
+        ).stdout.splitlines()
+        for name in sorted(names)
+    }
+
+
+def check_runtime_contracts(env: dict[str, str], before: dict[str, list[str]]) -> bool:
+    values = {
+        column: [value for value in items if value not in set(before.get(column, ()))]
+        for column, items in user_input(env).items()
+    }
+    values["測試密碼"] = [env["E2E_ADMIN_PASSWORD"], "e2e-password-"]
+    leaks = find_leaks(values, scanned_sources(env))
+    writes = unexpected_writes(container_writes(env), container_mounts(env))
+    summary = contracts_summary(leaks, writes)
+    print(summary)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+            handle.write(summary)
+    return not leaks and not writes
+
+
+def check_spec_imports() -> None:
+    specs = {
+        str(path.relative_to(E2E_DIR)): path.read_text(encoding="utf-8")
+        for path in sorted((E2E_DIR / "tests").rglob("*.ts"))
+        if path.name != "support.ts"
+    }
+    if found := direct_playwright_imports(specs):
+        fail(
+            "這些檔案直接從 @playwright/test 匯入 test，執行期契約的檢查不會套用："
+            + "、".join(found)
+            + '\n改成 import { test } from "../support"（setup 檔用 "./support"）'
+        )
+
+
 def playwright(env: dict[str, str], *args: str) -> int:
     if not (E2E_DIR / "node_modules").is_dir():
         fail("缺少 e2e 的套件：make init dev（或 cd e2e && npm ci）")
+    check_spec_imports()
     subprocess.run(["npm", "run", "--silent", "typecheck"], cwd=E2E_DIR, check=True)
     subprocess.run(
         ["npx", "playwright", "install", "chromium"], cwd=E2E_DIR, check=True, capture_output=True
@@ -149,8 +334,11 @@ def cmd_check(base: dict[str, str]) -> None:
     shard = os.environ.get("E2E_SHARD")
     try:
         up(env, *(() if prebuilt else ("--build",)))
+        seeded = user_input(env)
         reset_data(env)
         status = playwright(env, *(("--shard", shard) if shard else ()))
+        if not check_runtime_contracts(env, seeded):
+            status = 1
         if status == 0:
             # 整套系統只有這裡真的在跑: 順便實際備份再還原一次 (tools/commands/backup.py)。
             try:

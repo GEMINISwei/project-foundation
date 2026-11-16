@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
-import { expect, test } from "@playwright/test"
-import { createUser } from "../support"
+import { expect } from "@playwright/test"
+import { createUser, test } from "../support"
 
 // 預設載入超管的登入狀態 (playwright.config.ts)。
 test("超級管理者新增使用者後，列表看得到該使用者", async ({ page }) => {

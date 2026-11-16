@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test"
-import { SIGNED_OUT, admin, login } from "../support"
+import { expect } from "@playwright/test"
+import { SIGNED_OUT, admin, login, test } from "../support"
 
 // 這個檔案驗證的是登入流程本身, 不載入預設的超管登入狀態。
 test.use({ storageState: SIGNED_OUT })

@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test"
+import { expect } from "@playwright/test"
+import { test } from "../support"
 
 // WebApp 在手機上要像原生 App: 畫面不能縮放 (理由與代價見 docs/foundation/decisions.md 第 14 條)。
 // viewport 鎖住雙指縮放, `touch-action` 擋雙擊放大; iOS Safari 分頁會忽略 `user-scalable`,

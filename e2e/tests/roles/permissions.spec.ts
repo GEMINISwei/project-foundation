@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
-import { expect, test, type Page } from "@playwright/test"
-import { SIGNED_OUT, createUser, login } from "../support"
+import { expect, type Page } from "@playwright/test"
+import { SIGNED_OUT, createUser, login, test } from "../support"
 
 /** 超管建立一個角色並打開它的權限設定頁。 */
 async function createRoleAndOpenPermissions(page: Page, name: string) {
