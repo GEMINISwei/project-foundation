@@ -964,3 +964,76 @@ def test_exceptions_summary_lists_each_uncovered_exception():
 
     assert "apps/api/modules/orders/service.py:9" in summary
     assert problem in summary
+
+
+def e2e_command():
+    from tools.commands import e2e
+
+    return e2e
+
+
+def test_leak_scan_reports_where_user_input_shows_up():
+    values = {"users.nickname": ["E2E 管理者 ab12cd34"], "users.username": ["e2e-admin-ab12cd34"]}
+    sources = {
+        "api 的 log": (
+            'event=request path=/api/users\nevent=user_created nickname="E2E 管理者 ab12cd34"\n'
+        ),
+        "audit_logs": '{"event": "user_created", "data": {"user_id": "0190"}}\n',
+    }
+
+    assert e2e_command().find_leaks(values, sources) == [
+        ("users.nickname", "api 的 log", 'event=user_created nickname="E2E 管理者 ab12cd34"'),
+    ]
+
+
+def test_leak_scan_ignores_short_values():
+    sources = {"api 的 log": "language=en status=ok\n"}
+
+    assert e2e_command().find_leaks({"roles.name": ["en", "ok"]}, sources) == []
+
+
+def test_container_writes_outside_volumes_are_reported():
+    diffs = {"api": ["C /app", "A /app/report.csv", "C /tmp", "A /tmp/upload-1"]}
+
+    assert e2e_command().unexpected_writes(diffs) == [("api", "/app/report.csv")]
+
+
+def test_known_caches_and_parent_directories_are_not_reported():
+    diffs = {
+        "web": ["C /app", "C /app/.next", "A /app/.next/cache", "A /app/.next/cache/images/x"],
+        "nginx": [
+            "C /run",
+            "A /run/nginx.pid",
+            "C /var/cache/nginx",
+            "A /var/cache/nginx/client_temp",
+        ],
+    }
+
+    assert e2e_command().unexpected_writes(diffs) == []
+
+
+def test_runtime_contracts_summary_is_one_line_when_nothing_leaks_or_is_lost():
+    summary = e2e_command().contracts_summary([], [])
+
+    assert len(summary.strip().splitlines()) == 1
+
+
+def test_runtime_contracts_summary_lists_leaks_and_lost_writes():
+    leak = ("users.nickname", "api 的 log", "nickname=E2E 管理者 ab12cd34")
+    summary = e2e_command().contracts_summary([leak], [("api", "/app/report.csv")])
+
+    assert "users.nickname" in summary
+    assert "api 的 log" in summary
+    assert "/app/report.csv" in summary
+
+
+def test_specs_must_take_test_from_the_shared_support():
+    specs = {
+        "tests/a.spec.ts": 'import { expect, test } from "@playwright/test"\n',
+        "tests/b.spec.ts": (
+            'import { expect } from "@playwright/test"\nimport { test } from "../support"\n'
+        ),
+        "tests/c.setup.ts": 'import { test as setup } from "@playwright/test"\n',
+    }
+
+    assert e2e_command().direct_playwright_imports(specs) == ["tests/a.spec.ts", "tests/c.setup.ts"]
