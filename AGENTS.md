@@ -34,8 +34,9 @@
 12. **已經發版的 migration 不可修改或刪除**；model 與 migration 要一致。
 13. **新增的抑制註解同一行要寫理由**（`# noqa`、`# type: ignore`、`eslint-disable`、跳過測試）。
 14. **skills 只放 `.agents/skills/`，hook 的邏輯只放 `.agents/hooks/`**，兩家的設定要一致。
-15. **新增的註解只能是例外**：寫成 `例外(<測試名稱>): <理由>`，測試名稱要存在；通用的規則改用型別、lint 與測試表達
-    （`.py`、`.ts`、`.tsx`，只看新增的行，[說明](docs/foundation/development.md#註解與文件)）。
+15. **新增的註解只能是例外**：寫成 `例外(<測試名稱>): <理由>`，指名的測試要執行到它底下那一行；
+    新增的函式與類別 docstring 只能是 API 契約的說明。通用的規則改用型別、lint 與測試表達
+    （[說明](docs/foundation/development.md#註解與文件)）。
 
 ## 漏了不會報錯的地方
 
@@ -120,6 +121,7 @@
 | 任何程式碼 | push，照 `watch-pr` 等 CI。完整的檢查只在 CI 跑；寫測試時只跑那一項確認紅燈 |
 | model 的欄位、索引、約束 | 照 `add-migration`：`make db migration "說明"`，讀過產出 |
 | 跟資料庫互動的後端程式 | `make check integration <測試檔>` |
+| 加了例外註解 | `make check exceptions`，確認指名的測試執行得到 |
 | 登入、導向、權限、cookie | `make e2e up` 後 `make e2e test <檔案>` |
 | 後端的 schema、路由、權限、語系 | `make gen-types` |
 | 環境變數 | `.env.example`、`infra/compose/compose.yml`、讀取端（[說明](docs/foundation/development.md#環境變數)） |
