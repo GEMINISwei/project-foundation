@@ -27,6 +27,7 @@ backups/
 test-results/
 playwright-report/
 e2e/.auth/
+e2e/results/
 
 # 系統與編輯器
 .DS_Store

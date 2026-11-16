@@ -137,6 +137,21 @@ jobs:
           api: true
       - run: make check integration
 
+  exceptions:
+    needs: [changes]
+    if: needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup
+        with:
+          api: true
+          web: true
+      - run: make check exceptions
+
   web-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -217,17 +232,36 @@ jobs:
           API_IMAGE: ci-api:e2e
           WEB_IMAGE: ci-web:e2e
           E2E_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
-      - if: failure()
+      # 通過時也上傳: 截圖是審查的證據, 不只是除錯用。
+      - if: always()
+        id: report
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.shard }}
           path: |
             e2e/playwright-report/
             e2e/test-results/
+            e2e/results/
           retention-days: 7
+      - name: E2E 的 Job summary
+        if: always()
+        env:
+          REPORT_URL: ${{ steps.report.outputs.artifact-url }}
+        run: python3 .github/scripts/e2e-summary.py e2e/results/results.json
 
   ci-gate:
-    needs: [changes, lint, contract, migrations, types, api-test, api-integration, web-test, build, e2e]
+    needs:
+      - changes
+      - lint
+      - contract
+      - migrations
+      - types
+      - api-test
+      - api-integration
+      - exceptions
+      - web-test
+      - build
+      - e2e
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

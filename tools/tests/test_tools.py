@@ -900,3 +900,67 @@ def test_revision_is_empty_when_the_database_has_no_migration_table_yet(revision
 def test_revision_prints_the_current_migration_version(revision_database, capsys):
     pipeline.print_revision(DEVELOPMENT)
     assert capsys.readouterr().out.strip() == "2f478491f1fa"
+
+
+def exception(kind="api", start=10, test="test_keeps_order"):
+    return check.Target("apps/api/modules/orders/service.py", start - 1, start, test, kind)
+
+
+def test_exception_passes_when_its_named_test_runs_the_line_below():
+    assert check.judge(exception(), {10: {"test_keeps_order"}}) is None
+
+
+def test_exception_fails_when_its_named_test_does_not_run_the_line_below():
+    problem = check.judge(exception(), {10: {"test_other"}, 12: {"test_keeps_order"}})
+
+    assert problem is not None
+    assert "test_keeps_order" in problem
+    assert "10" in problem
+
+
+def test_exception_is_judged_on_the_first_executable_line_from_its_start():
+    ran = {9: set(), 13: {"test_keeps_order"}, 15: set()}
+
+    assert check.judge(exception(start=10), ran) is None
+    assert check.judge(exception(start=14), ran) is not None
+    assert check.judge(exception(start=20), ran) is not None
+
+
+TEST_FILES = {
+    "apps/api/tests/modules/orders/test_service.py": "def test_keeps_order() -> None:\n",
+    "apps/web/tests/shared/format.test.ts": 'it("排序不變", () => {})\n',
+    "e2e/tests/users/list.spec.ts": 'test("登入後看得到清單", async () => {})\n',
+    "tools/tests/test_tools.py": "def test_tool():\n",
+}
+
+
+def test_exceptions_run_the_matching_app_tests_with_coverage():
+    api = check.classify("apps/api/modules/orders/service.py", "test_keeps_order", TEST_FILES)
+    web = check.classify("apps/web/shared/format.ts", "排序不變", TEST_FILES)
+
+    assert api == ("api", ["apps/api/tests/modules/orders/test_service.py"])
+    assert web == ("web", ["apps/web/tests/shared/format.test.ts"])
+
+
+def test_exceptions_on_e2e_or_tooling_tests_are_only_checked_for_existence():
+    login = check.classify("apps/web/modules/auth/ui/LoginForm.tsx", "登入後看得到清單", TEST_FILES)
+    tool = check.classify("tools/commands/backup.py", "test_tool", TEST_FILES)
+    missing = check.classify("apps/api/modules/orders/service.py", "test_missing", TEST_FILES)
+
+    assert login[0] == "exists"
+    assert tool[0] == "exists"
+    assert missing[0] == "missing"
+
+
+def test_exceptions_summary_is_one_line_when_everything_is_covered():
+    summary = check.exceptions_summary([], covered=3, existence_only=1)
+
+    assert len(summary.strip().splitlines()) == 1
+
+
+def test_exceptions_summary_lists_each_uncovered_exception():
+    problem = "測試「test_keeps_order」沒有執行到第 10 行"
+    summary = check.exceptions_summary([(exception(), problem)], covered=0, existence_only=0)
+
+    assert "apps/api/modules/orders/service.py:9" in summary
+    assert problem in summary

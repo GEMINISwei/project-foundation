@@ -338,3 +338,158 @@ def test_gate_summary_is_one_line_when_everything_passed(tmp_path: Path) -> None
 
     assert code == 0
     assert len(lines(summary)) == 1
+
+
+CONTRACT_FILE = "contracts/openapi.json"
+
+
+def test_new_function_docstring_outside_the_api_contract_is_rejected(tmp_path: Path) -> None:
+    code, errors, _ = check(
+        tmp_path,
+        {SOURCE: "x = 1\n"},
+        {SOURCE: 'x = 1\n\n\ndef total() -> int:\n    """先算小計再加稅。"""\n    return 1\n'},
+    )
+
+    assert code == 1
+    assert f"{SOURCE}:5" in errors
+
+
+def test_new_docstring_found_in_the_api_contract_is_allowed(tmp_path: Path) -> None:
+    contract = {"components": {"schemas": {"Order": {"description": "一筆訂單。\n\n金額含稅。"}}}}
+    code, errors, _ = check(
+        tmp_path,
+        {SOURCE: "x = 1\n", CONTRACT_FILE: "{}"},
+        {
+            SOURCE: 'class Order(BaseModel):\n    """一筆訂單。\n\n    金額含稅。\n    """\n',
+            CONTRACT_FILE: json.dumps(contract),
+        },
+    )
+
+    assert (code, errors) == (0, "")
+
+
+def test_new_module_docstring_is_allowed_and_listed_in_the_report(tmp_path: Path) -> None:
+    code, errors, summary = check(
+        tmp_path,
+        {SOURCE: "x = 1\n"},
+        {SOURCE: '"""訂單的計算。"""\n\nx = 1\n'},
+    )
+
+    assert (code, errors) == (0, "")
+    assert "訂單的計算" in summary
+
+
+def test_existing_function_docstrings_are_left_alone(tmp_path: Path) -> None:
+    base = 'def total() -> int:\n    """先算小計再加稅。"""\n    return 1\n'
+    code, errors, _ = check(tmp_path, {SOURCE: base}, {SOURCE: base + "\n\nx = 1\n"})
+
+    assert (code, errors) == (0, "")
+
+
+def exception_targets(path: str, source: str) -> list[tuple[int, int, str]]:
+    import importlib.util
+
+    loaded = importlib.util.spec_from_file_location("check_pr_changes", CHECK)
+    assert loaded is not None
+    assert loaded.loader is not None
+    module = importlib.util.module_from_spec(loaded)
+    loaded.loader.exec_module(module)
+    return module.exception_targets(path, source)
+
+
+def test_exception_start_line_is_the_code_right_below_the_comment() -> None:
+    source = "x = 1\n# 例外(test_a): 理由\n# 接續\n\ny = 2\n"
+
+    assert exception_targets("a.py", source) == [(2, 5, "test_a")]
+
+
+def test_exception_start_line_of_a_definition_is_its_body() -> None:
+    python = "# 例外(test_a): 理由\n@cache\ndef f(\n    x: int,\n) -> int:\n    return x\n"
+    typescript = (
+        "// 例外(排序不變): 理由\n"
+        "export function sort(items: string[]): string[] {\n"
+        "  return items\n"
+        "}\n"
+    )
+
+    assert exception_targets("a.py", python) == [(1, 6, "test_a")]
+    assert exception_targets("a.ts", typescript) == [(1, 3, "排序不變")]
+
+
+def test_trailing_exception_starts_on_its_own_line() -> None:
+    source = "x = 1\ny = sorted(x)  # 例外(test_a): 理由\n"
+
+    assert exception_targets("a.py", source) == [(2, 2, "test_a")]
+
+
+E2E_SUMMARY = REPO_ROOT / ".github/scripts/e2e-summary.py"
+REPORT_URL = "https://example.com/artifacts/1"
+
+
+def spec(title: str, status: str, project: str = "desktop") -> dict[str, object]:
+    return {
+        "title": title,
+        "ok": status == "expected",
+        "tests": [{"projectName": project, "status": status}],
+    }
+
+
+def playwright(*specs: dict[str, object]) -> dict[str, object]:
+    failed = sum(1 for item in specs if not item["ok"])
+    return {
+        "stats": {"expected": len(specs) - failed, "unexpected": failed, "flaky": 0, "skipped": 0},
+        "suites": [
+            {
+                "title": "users/list.spec.ts",
+                "file": "users/list.spec.ts",
+                "specs": list(specs[:1]),
+                "suites": [{"title": "編輯", "specs": list(specs[1:])}],
+            }
+        ],
+    }
+
+
+def e2e_summary(tmp_path: Path, report: dict[str, object] | None) -> tuple[int, str]:
+    results = tmp_path / "results.json"
+    if report is not None:
+        results.write_text(json.dumps(report), encoding="utf-8")
+    summary = tmp_path / "e2e.md"
+    done = subprocess.run(
+        [sys.executable, str(E2E_SUMMARY), str(results)],
+        env={"GITHUB_STEP_SUMMARY": str(summary), "REPORT_URL": REPORT_URL},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done.returncode, summary.read_text(encoding="utf-8") if summary.exists() else ""
+
+
+def test_e2e_summary_is_one_line_with_the_report_link_when_all_pass(tmp_path: Path) -> None:
+    report = playwright(spec("管理者看得到使用者清單", "expected"), spec("可以改暱稱", "expected"))
+    code, summary = e2e_summary(tmp_path, report)
+
+    assert code == 0
+    assert len(lines(summary)) == 1
+    assert REPORT_URL in summary
+
+
+def test_e2e_summary_lists_only_failed_tests(tmp_path: Path) -> None:
+    report = playwright(
+        spec("管理者看得到使用者清單", "expected"),
+        spec("不能停用自己", "unexpected", project="mobile"),
+    )
+    code, summary = e2e_summary(tmp_path, report)
+
+    assert code == 0
+    assert "不能停用自己" in summary
+    assert "mobile" in summary
+    assert "users/list.spec.ts" in summary
+    assert "管理者看得到使用者清單" not in summary
+    assert REPORT_URL in summary
+
+
+def test_e2e_summary_says_so_when_there_are_no_results(tmp_path: Path) -> None:
+    code, summary = e2e_summary(tmp_path, None)
+
+    assert code == 0
+    assert len(lines(summary)) == 1
