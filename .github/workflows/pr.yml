@@ -33,7 +33,7 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: .github/scripts/check-pr.sh
-      # 新增的抑制註解要在同一行寫理由 (腳本開頭有說明)。
+      # 新增的註解只能是例外、抑制註解要寫理由; 審查要看的項目寫進 Job summary (腳本開頭有說明)。
       - name: PR 的改動
         if: always()
         env:
