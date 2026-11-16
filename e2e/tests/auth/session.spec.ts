@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test"
-import { SIGNED_OUT, createUser, login, logout } from "../support"
+import { expect } from "@playwright/test"
+import { SIGNED_OUT, createUser, login, logout, test } from "../support"
 
 test("登出後其他已登入的裝置也會被登出", async ({ browser }) => {
   // 登出會撤銷這個帳號所有裝置的 session, 用 worker 共用的 member 會連累同一個 worker 之後的測試。

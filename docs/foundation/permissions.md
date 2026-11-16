@@ -27,7 +27,8 @@
    )
    ```
 
-3. **路由宣告需要的權限**：`Depends(require(Permission.PRODUCTS_READ))`。
+3. **路由宣告需要的權限**：`Depends(require(Permission.PRODUCTS_READ))`。權限矩陣的測試
+   （`tests/app/test_route_permissions.py`）會自動涵蓋新路由，不用另外寫 401 與 403 的測試。
 4. `make gen-types`。前端的 `Permission` 型別會多出這兩個值，manifest 的 `requires` 與 `hasPermission()` 才用得到。
 5. **前端**：頁面的 manifest 寫 `requires: ["products:read"]`，頁面開頭 `requirePermission("products:read")`，
    寫入的按鈕用 `hasPermission(permissions, "products:write")` 決定顯示。
