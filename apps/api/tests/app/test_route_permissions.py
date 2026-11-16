@@ -6,12 +6,12 @@
 
 import re
 import uuid
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
 import httpx2
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, iter_route_contexts
 
 from app.server import app
 from shared.auth.identity import Identity, public, require
@@ -38,21 +38,30 @@ def declared(route: APIRoute) -> Rule:
     return found
 
 
-def api_routes(application: FastAPI) -> list[APIRoute]:
-    return [
-        route
-        for route in application.routes
-        if isinstance(route, APIRoute) and route.path.startswith(API_PREFIX)
-    ]
+class Route(NamedTuple):
+    path: str
+    methods: frozenset[str]
+    route: APIRoute
+
+
+def api_routes(application: FastAPI) -> list[Route]:
+    result = []
+    for context in iter_route_contexts(application.routes):
+        route, path = context.original_route, context.path
+        if isinstance(route, APIRoute) and path and path.startswith(API_PREFIX):
+            result.append(Route(path, frozenset(context.methods or ()), route))
+    return result
 
 
 def calls(application: FastAPI) -> list[tuple[str, str, tuple[str, ...]]]:
+    routes = api_routes(application)
+    assert routes, "列不出任何 API 路由"
     result = []
-    for route in api_routes(application):
-        rule = declared(route)
+    for item in routes:
+        rule = declared(item.route)
         if isinstance(rule, tuple):
-            path = re.sub(r"\{[^}]+\}", lambda _: str(uuid.uuid4()), route.path)
-            result += [(method, path, rule) for method in sorted(route.methods - {"HEAD"})]
+            path = re.sub(r"\{[^}]+\}", lambda _: str(uuid.uuid4()), item.path)
+            result += [(method, path, rule) for method in sorted(item.methods - {"HEAD"})]
     return result
 
 
@@ -69,8 +78,8 @@ async def token_for(
 async def status(
     client: httpx2.AsyncClient, method: str, path: str, headers: dict[str, str]
 ) -> int:
-    body = {"json": {}} if method in ("POST", "PUT", "PATCH") else {}
-    response = await client.request(method, path, headers=headers, **body)
+    body: dict[str, object] | None = {} if method in ("POST", "PUT", "PATCH") else None
+    response = await client.request(method, path, headers=headers, json=body)
     return response.status_code
 
 
@@ -79,12 +88,14 @@ def report(mismatches: list[str]) -> str:
 
 
 def test_every_api_route_declares_its_permissions_or_is_marked_public() -> None:
+    routes = api_routes(app)
     missing = [
-        f"{','.join(sorted(route.methods))} {route.path}"
-        for route in api_routes(app)
-        if declared(route) is None
+        f"{','.join(sorted(item.methods))} {item.path}"
+        for item in routes
+        if declared(item.route) is None
     ]
 
+    assert routes, "列不出任何 API 路由"
     assert missing == []
 
 
@@ -103,7 +114,7 @@ def test_a_route_without_require_or_public_is_reported() -> None:
     application = FastAPI()
     application.include_router(router, prefix=API_PREFIX)
 
-    assert {route.path: declared(route) for route in api_routes(application)} == {
+    assert {item.path: declared(item.route) for item in api_routes(application)} == {
         "/api/open": None,
         "/api/member": (),
         "/api/login": "public",

@@ -1,6 +1,8 @@
 """目前登入者與權限檢查。
 
 路由用 `Depends(require(Permission.USERS_READ))` 宣告需要的權限; 不帶參數就是「只要登入」。
+不需要登入的路由 (登入本身) 要明確標上 `dependencies=[Depends(public())]`:
+tests/app/test_route_permissions.py 逐條確認每條路由不是宣告了權限就是標成公開。
 
 `shared` 不認識使用者資料表, 所以「怎麼依 id 取得使用者」由擁有帳號資料的模組在 manifest 的
 `identity_loader` 提供, 平台啟動時放進 `app.state`。
@@ -42,8 +44,12 @@ IdentityLoader = Callable[[uuid.UUID], Awaitable[Identity | None]]
 _bearer = HTTPBearer(auto_error=False)
 
 
-def require(*permissions: BasePermission) -> Callable[..., Awaitable[Identity]]:
-    async def dependency(
+class Requirement:
+    def __init__(self, permissions: tuple[BasePermission, ...]) -> None:
+        self.required_permissions = permissions
+
+    async def __call__(
+        self,
         request: Request,
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     ) -> Identity:
@@ -53,8 +59,21 @@ def require(*permissions: BasePermission) -> Callable[..., Awaitable[Identity]]:
         if identity is None or identity.is_disabled or identity.auth_version != claims.auth_version:
             raise TOKEN_REVOKED()
         context.set_user(str(identity.id))
-        if not all(identity.can(permission) for permission in permissions):
+        if not all(identity.can(permission) for permission in self.required_permissions):
             raise FORBIDDEN()
         return identity
 
-    return dependency
+
+class Public:
+    public = True
+
+    async def __call__(self) -> None:
+        return None
+
+
+def require(*permissions: BasePermission) -> Requirement:
+    return Requirement(permissions)
+
+
+def public() -> Public:
+    return Public()

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.permissions import Permission
 from shared import context
-from shared.auth.identity import Identity, require
+from shared.auth.identity import Identity, public, require
 from shared.auth.permissions import PermissionCatalog, get_catalog
 from shared.db.pagination import Page, PageParams
 from shared.db.session import release_connection
@@ -39,7 +39,7 @@ login_ip_limiter = RateLimiter("login_ip", max_attempts=50, window_seconds=300)
 password_change_limiter = RateLimiter("password_change", max_attempts=10, window_seconds=300)
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(public())])
 async def login(data: LoginRequest) -> Token:
     ip = context.client_ip.get()
     await login_ip_limiter.check(ip)
