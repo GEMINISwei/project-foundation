@@ -3,22 +3,27 @@
 
 pr.yml 呼叫, 本機也能跑。只看這個 PR 新增的行, 既有的內容改到才整理。
 
-擋下兩件事 (docs/foundation/development.md〈註解與文件〉〈抑制註解〉):
+擋下三件事 (docs/foundation/development.md〈註解與文件〉〈抑制註解〉):
 - 新增的抑制註解同一行沒寫理由。
 - `.py`、`.ts`、`.tsx` 新增的註解不是例外。例外寫成 `例外(<測試名稱>): <理由>`,
   測試名稱要在測試檔裡; 緊接的註解行是它的接續。
-  docstring、抑制註解、工具指令、設定檔與產生的檔案不檢查。
+  抑制註解、工具指令、設定檔與產生的檔案不檢查。
+- 新增的函式與類別 docstring 沒有出現在 API 契約 (contracts/openapi.json)。模組 docstring 不擋。
 
 有 GITHUB_STEP_SUMMARY 時把審查要看的東西寫成表格: 沒過的項目、新增的例外與抑制註解、
-改掉既有內容的測試檔、動到的防線檔案。沒有要看的項目時只有一行。
+新增或改到的模組 docstring、改掉既有內容的測試檔、動到的防線檔案。沒有要看的項目時只有一行。
+`make check exceptions` 也載入這支腳本, 用 exception_targets 找出每個例外要驗的那一行。
 這份證據由 CI 產生, 不由 agent 描述; 測試檔與防線檔案的定義跟 hook 共用 (.agents/hooks/)。
 要能在 Python 3.9 上跑 (macOS 內建)。
 """
 
 from __future__ import annotations
 
+import ast
 import importlib
+import inspect
 import io
+import json
 import os
 import re
 import subprocess
@@ -48,6 +53,12 @@ TS_TOOL = re.compile(
 )
 PY_TEST_NAME = re.compile(r"\bdef (test_\w+)")
 HUNK = re.compile(r"^@@ -\S+ \+(\d+)")
+PY_HEADER = re.compile(r"^\s*(?:@|async\s+def\b|def\b|class\b)")
+TS_HEADER = re.compile(
+    r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function\b|class\b)|=>\s*\{\s*$"
+)
+COMMENT_START = re.compile(r"^\s*(?:#|//|/\*|\*)")
+CONTRACT = "contracts/openapi.json"
 JS_TEST_NAME = re.compile(r"\b(?:it|test|describe)(?:\.\w+)?\(\s*(['\"`])(.+?)\1")
 
 REGEX_BEFORE = set("(,=:[!&|?{};+-*%<>~^")
@@ -66,6 +77,13 @@ class Line(NamedTuple):
 class Group(NamedTuple):
     path: str
     lines: list[Line]
+
+
+class Docstring(NamedTuple):
+    start: int
+    end: int
+    kind: str
+    text: str
 
 
 def hook_module(name: str) -> Any:
@@ -306,6 +324,108 @@ def typescript_groups(path: str, source: str) -> list[Group]:
     return groups
 
 
+def groups_of(path: str, source: str) -> list[Group]:
+    build = python_groups if path.endswith(".py") else typescript_groups
+    return build(path, source)
+
+
+def body_start(lines: list[str], index: int, python: bool) -> int:
+    if not (PY_HEADER if python else TS_HEADER).search(lines[index]):
+        return index + 1
+    for position in range(index, len(lines)):
+        code = lines[position].rstrip()
+        if code.endswith(":" if python else "{") and not code.lstrip().startswith("@"):
+            return position + 2
+    return index + 1
+
+
+def exception_targets(path: str, source: str) -> list[tuple[int, int, str]]:
+    lines = source.splitlines()
+    result = []
+    for group in groups_of(path, source):
+        texts = [line for line in group.lines if not line.directive]
+        match = EXCEPTION.match(texts[0].text) if texts else None
+        if not match or not match.group("reason").strip():
+            continue
+        first, test = texts[0].number, match.group("test").strip()
+        if not COMMENT_START.match(lines[first - 1]):
+            result.append((first, first, test))
+            continue
+        after = max(line.number for line in group.lines)
+        below = [
+            index
+            for index in range(after, len(lines))
+            if lines[index].strip() and not COMMENT_START.match(lines[index])
+        ]
+        start = body_start(lines, below[0], path.endswith(".py")) if below else len(lines) + 1
+        result.append((first, start, test))
+    return result
+
+
+def literal(text: str) -> str:
+    try:
+        value = ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        return text
+    return value if isinstance(value, str) else text
+
+
+def nesting(token: tokenize.TokenInfo) -> int:
+    if token.type != tokenize.OP:
+        return 0
+    return 1 if token.string in "([{" else -1 if token.string in ")]}" else 0
+
+
+def python_docstrings(source: str) -> list[Docstring]:
+    result: list[Docstring] = []
+    expect: str | None = "module"
+    pending: str | None = None
+    depth, ready = 0, False
+    skipped = (tokenize.COMMENT, tokenize.NL, tokenize.ENCODING, tokenize.INDENT, tokenize.DEDENT)
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type in skipped:
+                continue
+            if token.type == tokenize.NEWLINE:
+                if ready:
+                    expect, pending, ready = pending, None, False
+                continue
+            if expect and token.type == tokenize.STRING:
+                text = literal(token.string)
+                result.append(Docstring(token.start[0], token.end[0], expect, text))
+            expect = None
+            depth += nesting(token)
+            if token.type == tokenize.NAME and token.string in ("def", "class") and not depth:
+                pending = "class" if token.string == "class" else "function"
+            ready = ready or (token.string == ":" and pending is not None and not depth)
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return result
+    return result
+
+
+def normalized(text: str) -> str:
+    return " ".join(inspect.cleandoc(text).split())
+
+
+def contract_texts(head: str) -> set[str]:
+    try:
+        contract = json.loads(git("show", f"{head}:{CONTRACT}"))
+    except (subprocess.CalledProcessError, ValueError):
+        return set()
+    texts: set[str] = set()
+    pending = [contract]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, dict):
+            texts.update(
+                normalized(v) for k, v in node.items() if k == "description" and isinstance(v, str)
+            )
+            pending.extend(node.values())
+        elif isinstance(node, list):
+            pending.extend(node)
+    return texts
+
+
 def in_comment_scope(path: str) -> bool:
     return (
         path.endswith(COMMENT_SUFFIXES) and not GENERATED.search(path) and not CONFIG.search(path)
@@ -332,6 +452,7 @@ class Review:
         self.errors: list[tuple[str, str]] = []
         self.exceptions: list[tuple[str, str, str]] = []
         self.suppressions: list[tuple[str, str]] = []
+        self.modules: list[tuple[str, str]] = []
         self.tests: list[tuple[str, str]] = []
         self.protected: list[str] = []
 
@@ -361,8 +482,7 @@ def review_comments(head: str, added: dict[str, dict[int, str]], review: Review)
         if not in_comment_scope(path):
             continue
         source = git("show", f"{head}:{path}")
-        build = python_groups if path.endswith(".py") else typescript_groups
-        for group in build(path, source):
+        for group in groups_of(path, source):
             new = [line for line in group.lines if line.number in lines and not line.directive]
             if not new:
                 continue
@@ -373,6 +493,29 @@ def review_comments(head: str, added: dict[str, dict[int, str]], review: Review)
                 review.errors.append((where, problem))
             else:
                 review.exceptions.append((where, test, reason))
+
+
+def review_docstrings(head: str, added: dict[str, dict[int, str]], review: Review) -> None:
+    contract: set[str] | None = None
+    for path, lines in added.items():
+        if not path.endswith(".py") or not in_comment_scope(path):
+            continue
+        for doc in python_docstrings(git("show", f"{head}:{path}")):
+            if not any(number in lines for number in range(doc.start, doc.end + 1)):
+                continue
+            where = f"{path}:{doc.start}"
+            if doc.kind == "module":
+                review.modules.append((where, (doc.text.strip().splitlines() or [""])[0]))
+                continue
+            contract = contract_texts(head) if contract is None else contract
+            if normalized(doc.text) not in contract:
+                review.errors.append(
+                    (
+                        where,
+                        f"新增的 docstring 只能是 API 契約的說明（會進 {CONTRACT} 的）；"
+                        "其他說明改成例外註解，或交給型別、測試名稱表達",
+                    )
+                )
 
 
 def review_suppressions(added: dict[str, dict[int, str]], review: Review) -> None:
@@ -431,11 +574,15 @@ def summary(review: Review) -> str:
         *table("沒過的項目", ("位置", "原因"), review.errors),
         *table("新增的例外", ("位置", "測試", "理由"), review.exceptions),
         *table("新增的抑制註解", ("位置", "內容"), quoted),
+        *table("新增或改到的模組 docstring", ("位置", "第一行"), review.modules),
         *table("改掉既有內容的測試檔", ("檔案", "改動"), review.tests),
         *table("動到的防線檔案", ("檔案",), [(path,) for path in review.protected]),
     ]
     if not sections:
-        return "沒有要審查的項目：沒有新增的例外與抑制註解，既有的測試與防線檔案都沒動。\n"
+        return (
+            "沒有要審查的項目：沒有新增的例外、抑制註解與模組 docstring，"
+            "既有的測試與防線檔案都沒動。\n"
+        )
     return "\n".join(["### PR 的改動：要審查的項目", "", *sections])
 
 
@@ -445,6 +592,7 @@ def main() -> int:
     added = added_lines(base, head)
     review = Review()
     review_comments(head, added, review)
+    review_docstrings(head, added, review)
     review_suppressions(added, review)
     review_files(base, head, added, review)
 
