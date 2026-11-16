@@ -14,8 +14,9 @@ AGENTS.md                           兩家共用的規則 (不另設 CLAUDE.md)
 ## 三層防線
 
 1. **硬底線在 GitHub 上**：`main` 只經 PR、必過的 CI、commit 訊息檢查。agent 繞不過。
-2. **hook 只擋確認點**：不可逆、碰到 `main` 或正式環境、會讓其他檢查失效的動作。只認常見的寫法。
-3. **其餘由 agent 依 `AGENTS.md`〈高風險先問〉判斷**，拿不準就問。
+2. **hook 只擋確認點**：不可逆、碰到 `main` 或正式環境、會讓其他檢查失效或讓既有驗證變弱的動作。只認常見的寫法，
+   作用是提早回饋，不是最後一道關卡。
+3. **其餘由 agent 依 `AGENTS.md`〈授權界線〉判斷**：抓得到、復原得了的自己處理，其餘先問。
 
 不追求繞不過：換個寫法擋不住是已知的取捨，由 CI 與審查補。要加新的 hook 之前，先指出一次實際發生、而且現有的
 檢查都沒擋下的問題。
@@ -24,7 +25,7 @@ AGENTS.md                           兩家共用的規則 (不另設 CLAUDE.md)
 
 | 腳本 | 時機 | 做什麼 |
 |---|---|---|
-| `guard_commands.py` | 執行 shell 指令前 | 擋下部署、發布、合併與繞過檢查的指令；有開著的 PR 時開新分支要確認 |
+| `guard_commands.py` | 執行 shell 指令前 | 擋下部署、發布、合併與繞過檢查的指令；有開著的 PR 時開新分支要確認。轉 Ready 不擋 |
 | `guard_tests.py` | 用改檔工具改檔前 | 測試鎖、防線檔案 |
 | `session_context.py` | 開新 session、恢復或壓縮上下文後 | 不擋，把分支、開著的 PR、測試鎖的狀態加進上下文 |
 
@@ -32,11 +33,21 @@ AGENTS.md                           兩家共用的規則 (不另設 CLAUDE.md)
 
 ### 測試鎖
 
-實作開始之後改測試檔要使用者同意（[`testing.md`](testing.md#改程式不改測試)）。兩家的流程相同：
+實作開始之後，改掉既有的測試內容要使用者同意（[`testing.md`](testing.md#改程式不改測試)）。hook 比對改動前後的內容：
 
-1. agent 用改檔工具改測試檔時被擋下。
-2. agent 在對話訊息裡**一次列出**所有要改的測試檔，每個寫原因與怎麼改（簡短即可），最後才問一句是否全部同意。
-   清單不放進詢問視窗：項目一多會顯示不完，使用者看不到就無法判斷。
+| 改法 | 結果 |
+|---|---|
+| 新增測試檔 | 放行 |
+| 在既有的測試檔只加新的行（既有的行照原本的順序全部留著） | 放行 |
+| 改或刪既有的行、刪檔、搬移、整檔覆寫成別的內容 | 擋下 |
+| 新增的行裡有跳過測試的寫法（`skip`、`skipif`、`xfail`、`fixme`、`importorskip`、`.only(`） | 擋下 |
+| 判斷不出來（notebook、讀不到原本的內容） | 擋下 |
+
+被擋下之後兩家的流程相同：
+
+1. agent 先看是不是改實作或補新的案例就夠了。
+2. 真的要改既有的測試時，在對話訊息裡**一次列出**所有要改的測試檔，每個寫原因與怎麼改（簡短即可），
+   最後才問一句是否全部同意。清單不放進詢問視窗：項目一多會顯示不完，使用者看不到就無法判斷。
 3. 使用者同意後，agent 執行一次：
 
    ```bash
@@ -44,10 +55,11 @@ AGENTS.md                           兩家共用的規則 (不另設 CLAUDE.md)
    ```
 
    這個指令兩家都設成一定跳確認，使用者只按這一次。
-4. 之後在**這個分支上**改這幾個檔案不再詢問；沒列到的檔案、換了分支都要重新申請。
+4. 之後在**這個分支上**改這幾個檔案不再詢問，修幾輪都一樣；沒列到的檔案、換了分支都要重新申請。
 
 放行記在 `.git/agent-approvals`（不進版控）。直接寫那個檔案、換個寫法執行 `approve.py` 會被擋下。
-只攔改檔工具；用 shell 指令改測試檔不會被攔，由審查時看 diff 補。
+只攔改檔工具；用 shell 指令改測試檔不會被攔，由審查時看 diff 補。只加不改也可能讓驗證變弱
+（例如加一個蓋掉既有行為的共用 fixture），這種一樣要先問，hook 認不出來。
 
 ### 防線檔案
 
@@ -72,7 +84,7 @@ AGENTS.md                           兩家共用的規則 (不另設 CLAUDE.md)
 - **唯一的出口是固定寫法的指令** `.agents/skills/release/scripts/publish.sh <版號> [--prerelease]`，
   兩家都設成一定跳確認（Claude 的 `permissions.ask`、Codex 的 `.codex/rules/publish-release.rules`）。
 - **其他會部署或合併的寫法一律擋下**：push 到 `main`、`gh release create/edit/delete`、
-  `gh workflow run deploy…`、`gh pr merge`、`gh pr ready`、`--no-verify`、改 `core.hooksPath`。
+  `gh workflow run deploy…`、`gh pr merge`、`--no-verify`、改 `core.hooksPath`。
 - `gh api` 用 GET 以外的方法、`gh run rerun` 要確認（Codex 上請使用者自己執行）。
 
 GitHub 端刻意不設 environment 的 Required reviewers，這裡是部署前唯一的確認
@@ -87,7 +99,7 @@ GitHub 端刻意不設 environment 的 Required reviewers，這裡是部署前�
 
 | Skill | 什麼時候用 |
 |---|---|
-| `feature-workflow` | 任何要進 `main` 的改動：開分支、驗收條件、先寫測試、Draft PR、實作、交給使用者審查 |
+| `feature-workflow` | 任何要進 `main` 的改動：開分支、驗收條件、先寫測試、Draft PR、實作、自審、轉 Ready 交給使用者審查 |
 | `watch-pr` | 開好或更新 PR 之後：等 CI、失敗就修、合併後同步本機 |
 | `add-migration` | 改了 model 之後 |
 | `hotfix` | 正式環境出問題、但還有 PR 開著 |

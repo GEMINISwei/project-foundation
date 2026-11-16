@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """改檔 hook: Claude 與 Codex 的 PreToolUse hook, 這兩種檔案改動前要使用者同意。
 
-- 測試檔: 開始實作之後 (test_lock.py)
+- 測試檔: 開始實作之後改掉既有的內容 (test_lock.py); 只加不改的不擋
 - 防線檔案 (hook、agent 設定、CI、檢查的設定): 任何時候 (protected_files.py)
 
 用法 (由 .claude/settings.json 與 .codex/hooks.json 呼叫): guard_tests.py <claude|codex>
@@ -25,20 +25,84 @@ from test_lock import is_test_file, pending_test_edits, relative, repo_root, ver
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 # Codex 的 apply_patch 把整段 patch 放在 command 裡, 檔名在這幾種標頭行。
-PATCH_FILE = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.M)
+PATCH_FILE = re.compile(r"^\*\*\* (Add File|Update File|Delete File|Move to): (.+)$", re.M)
+
+# 下面回傳的 dict: 要改的檔案 → 這次新增的行; 改到或刪掉既有的行、判斷不出來時是 None。
 
 
-def edited_paths(payload: dict[str, object]) -> list[str]:
+def added_lines(before: str, after: str) -> list[str] | None:
+    """after 比 before 多出來的行; before 的行沒有照原本的順序全部留著時是 None。"""
+    old = before.splitlines()
+    kept = 0
+    added = []
+    for line in after.splitlines():
+        if kept < len(old) and line == old[kept]:
+            kept += 1
+        else:
+            added.append(line)
+    return added if kept == len(old) else None
+
+
+def after_replacements(text: str, edits: object) -> str | None:
+    if not isinstance(edits, list):
+        return None
+    for edit in edits:
+        old = edit.get("old_string") if isinstance(edit, dict) else None
+        new = edit.get("new_string") if isinstance(edit, dict) else None
+        if not isinstance(old, str) or not isinstance(new, str) or old not in text:
+            return None
+        text = text.replace(old, new) if edit.get("replace_all") else text.replace(old, new, 1)
+    return text
+
+
+def tool_edits(
+    tool: object, tool_input: dict[str, object], cwd: Path
+) -> dict[str, list[str] | None]:
+    path = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if not isinstance(path, str):
+        return {}
+    target = cwd / path
+    try:
+        before = target.read_text(encoding="utf-8") if target.exists() else ""
+    except (OSError, ValueError):
+        return {path: None}
+    after: object = None
+    if tool == "Write":
+        after = tool_input.get("content")
+    elif tool == "Edit":
+        after = after_replacements(before, [tool_input])
+    elif tool == "MultiEdit":
+        after = after_replacements(before, tool_input.get("edits"))
+    return {path: added_lines(before, after) if isinstance(after, str) else None}
+
+
+def patch_edits(patch: str, cwd: Path) -> dict[str, list[str] | None]:
+    edits: dict[str, list[str] | None] = {}
+    sections = PATCH_FILE.split(patch)[1:]
+    for kind, name, body in zip(sections[0::3], sections[1::3], sections[2::3]):
+        path = name.strip()
+        lines = body.splitlines()
+        adds_only = (kind == "Add File" and not (cwd / path).exists()) or (
+            kind == "Update File" and not any(line.startswith("-") for line in lines)
+        )
+        earlier = edits.get(path, [])
+        if adds_only and earlier is not None:
+            edits[path] = earlier + [line[1:] for line in lines if line.startswith("+")]
+        else:
+            edits[path] = None
+    return edits
+
+
+def edited_files(payload: dict[str, object], cwd: Path) -> dict[str, list[str] | None]:
     tool = payload.get("tool_name")
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):
-        return []
+        return {}
     if tool in EDIT_TOOLS:
-        path = tool_input.get("file_path") or tool_input.get("notebook_path")
-        return [path] if isinstance(path, str) else []
+        return tool_edits(tool, tool_input, cwd)
     if tool == "apply_patch" and isinstance(tool_input.get("command"), str):
-        return [name.strip() for name in PATCH_FILE.findall(tool_input["command"])]
-    return []
+        return patch_edits(tool_input["command"], cwd)
+    return {}
 
 
 def respond(decision: str, reason: str) -> None:
@@ -56,18 +120,19 @@ def main() -> int:
     payload = json.load(sys.stdin)
     cwd = Path(payload.get("cwd") or ".")
     root = repo_root(cwd)
-    paths = edited_paths(payload)
-    if root is None or not paths:
+    edits = edited_files(payload, cwd)
+    if root is None or not edits:
         return 0
-    files = [relative(root, cwd, path) for path in paths]
+    files = {relative(root, cwd, path): added for path, added in edits.items()}
     if any(approvals.NAME in path for path in files):
         respond("deny", "放行檔只能由使用者確認過的申請指令寫入，不要直接修改。")
         return 0
-    protected = protected_files.pending_protected_edits(root, files)
+    protected = protected_files.pending_protected_edits(root, list(files))
     if protected:
         respond(*protected_files.verdict(protected))
         return 0
-    pending = pending_test_edits(root, [path for path in files if is_test_file(path)])
+    tests = {path: added for path, added in files.items() if is_test_file(path)}
+    pending = pending_test_edits(root, tests)
     if pending:
         respond(*verdict(pending))
     return 0

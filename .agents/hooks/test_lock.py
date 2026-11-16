@@ -1,21 +1,30 @@
-"""測試鎖: 哪些是測試檔、實作開始了沒。規則見 docs/foundation/testing.md〈改程式不改測試〉。
+"""測試鎖: 哪些是測試檔、實作開始了沒、哪種改法要同意。
+
+規則見 docs/foundation/testing.md〈改程式不改測試〉。
 
 CI 的 check-pr-changes.py 也用 is_test_file 與 is_implementation, 兩邊的定義才不會分岔。
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import approvals
 from approvals import git
 
-RULE = "實作已經開始，改測試檔要先經過使用者同意（docs/foundation/testing.md〈改程式不改測試〉）。"
+RULE = (
+    "實作已經開始，改掉既有的測試內容（改或刪既有的行、加入跳過測試的寫法）要先經過使用者同意"
+    "（docs/foundation/testing.md〈改程式不改測試〉）。新增測試檔、在既有的檔案裡只加新的行可以直接做，"
+    "先確認是不是改實作或補新的測試案例就夠了。"
+)
 EXPLAIN = (
-    "先在對話訊息裡一次列出這次要改的所有測試檔，每個簡短說明驗證的條件、沒過的原因、打算怎麼改，"
-    "以及為什麼是測試而不是實作要改；最後才問一句是否全部同意"
+    "真的要改既有的測試時，先在對話訊息裡一次列出這次要改的所有測試檔，每個簡短說明驗證的條件、"
+    "沒過的原因、打算怎麼改，以及為什麼是測試而不是實作要改；最後才問一句是否全部同意"
     "（清單不要放進詢問視窗，項目一多使用者看不到）。"
 )
+# 加一行就讓既有的測試不再執行的寫法: skip、skipif、xfail、fixme、importorskip 與 .only(。
+SKIPS_TESTS = re.compile(r"\b(?:skip\w*|xfail|fixme|importorskip)\b|\.only\(")
 # 有測試在守的程式: 各 app、E2E、hook、CI 腳本與 make 指令的實作。
 IMPLEMENTATION_DIRS = ("apps/", "e2e/", ".agents/hooks/", ".github/scripts/", "tools/")
 
@@ -61,11 +70,20 @@ def implementation_started(root: Path) -> bool:
     return any(is_implementation(path) for path in changed_files(root))
 
 
-def pending_test_edits(root: Path, tests: list[str]) -> list[str]:
-    """要改的測試檔中還需要使用者同意的 (實作還沒開始就沒有)。"""
-    if not tests or not implementation_started(root):
+def only_adds(added: list[str] | None) -> bool:
+    """既有的行都還在、新增的行沒有跳過測試: 既有的驗證不會變弱, 不需要同意。
+
+    added 是這次新增的行; 改到或刪掉既有的行、判斷不出來時是 None。
+    """
+    return added is not None and not any(SKIPS_TESTS.search(line) for line in added)
+
+
+def pending_test_edits(root: Path, tests: dict[str, list[str] | None]) -> list[str]:
+    """要改的測試檔 (路徑 → 新增的行) 中還需要使用者同意的 (實作還沒開始就沒有)。"""
+    weakened = {path for path, added in tests.items() if not only_adds(added)}
+    if not weakened or not implementation_started(root):
         return []
-    return sorted(set(tests) - approvals.approved(root, "test"))
+    return sorted(weakened - approvals.approved(root, "test"))
 
 
 def verdict(pending: list[str]) -> tuple[str, str]:

@@ -117,8 +117,7 @@ BLOCKED = [
     "bash .agents/skills/release/scripts/publish.sh 0.1.0",
     "./.agents/skills/release/scripts/publish.sh 0.1.0",
     "cd .agents/skills/release && scripts/publish.sh 0.1.0",
-    # 合併與轉 Ready 由使用者做。
-    "gh pr ready 5",
+    # 合併由使用者做。
     "gh pr merge 5 --auto --squash",
 ]
 
@@ -157,6 +156,8 @@ ALLOWED = [
     "gh release list",
     ".agents/skills/release/scripts/preview.sh 0.1.0",
     "cat .agents/skills/release/scripts/publish.sh",
+    # 自審過、CI 全綠之後 agent 自己轉 Ready; 合併才是使用者的確認點。
+    "gh pr ready 5",
     "gh pr ready 5 --undo",
     "gh pr view 5 --json state",
     "gh api repos/o/r/pulls/5",

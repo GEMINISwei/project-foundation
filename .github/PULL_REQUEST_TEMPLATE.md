@@ -1,5 +1,5 @@
 <!-- PR 標題用 Conventional Commits（`feat: add product list page`）：squash merge 後它就是 main 的 commit。
-     先開 Draft，「驗證」寫完再按 Ready for review。流程見 docs/foundation/workflow.md#開發流程 -->
+     先開 Draft，「驗證」寫完、自己審過再轉 Ready for review。流程見 docs/foundation/workflow.md#開發流程 -->
 
 ## 摘要
 
@@ -11,8 +11,8 @@
 
 <!-- 做過哪些驗證、結果如何，成功與失敗都寫；沒驗到的寫原因。
      驗收條件一條一行，接測試名稱與結果。寫不出測試名稱，代表那一條還沒想清楚。
-     AI agent 寫的驗收條件，先給使用者確認才開始寫測試。
-     實作開始之後改過的測試檔，在這一段寫一行：路徑與原因寫在同一行。
+     AI agent 寫的驗收條件是這個任務的範圍；牽涉產品行為、權限或資料處理的，先給使用者確認才開始寫測試。
+     實作開始之後改或刪過既有內容的測試檔，在這一段寫一行：路徑與原因寫在同一行。
 - 管理者不能停用自己的帳號 → `test_cannot_disable_self`：通過
 - CI：通過
      依改動補上：schema／權限／語系 → `make gen-types`；model → `make db migration "說明"`；
