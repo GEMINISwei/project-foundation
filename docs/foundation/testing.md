@@ -49,6 +49,26 @@ make e2e check                        # 用正式環境的映像檔跑全部, �
 - 只在手機版才有意義的測試標 `@mobile-only`，兩種裝置都要跑的標 `@mobile`。
 - CI 裡每個測試結束時都截圖，報告每次上傳，Job summary 有連結：截圖是審查時的證據，不只用來除錯。
   本機不截圖。
+- spec 一律從 `support` 匯入 `test`（`import { test } from "../support"`），執行期契約的檢查才會套用；
+  直接從 `@playwright/test` 匯入 `test` 時 `make e2e` 會拒絕執行。
+
+### 執行期契約
+
+系統跑起來之後，對**全部**的路由、請求與容器驗同一件事。新功能不必另外寫測試就會被涵蓋，
+補上〈漏了不會報錯的地方〉那幾條原本只靠記得的規則。
+
+| 契約 | 在哪裡驗 | 怎麼驗 |
+|---|---|---|
+| 每條路由都宣告權限，而且真的擋得住 | 後端整合測試 `tests/app/test_route_permissions.py` | 列出 `/api` 底下所有路由，不登入要 401、沒權限要 403、剛好有權限不能被擋；沒宣告也沒標 `public()` 的列出來 |
+| 瀏覽器不直接呼叫後端 | E2E 的共用 fixture（`tests/support.ts`） | 每個測試記錄瀏覽器發出的請求，打到 `/api/` 或別的網站就失敗 |
+| Server Action 不把憑證送進瀏覽器 | E2E 的共用 fixture | Server Action 的回應裡出現 cookie 的值或測試密碼就失敗 |
+| 使用者輸入不進 log、AUDIT 與任務 | `make e2e check` 跑完測試後 | 測試期間新增到資料庫的文字欄位與測試密碼，拿去掃描各服務的 log、`audit_logs`、`jobs` |
+| 資料只寫在會保存的位置 | `make e2e check` 跑完測試後 | `docker diff` 列出 volume 與 bind mount 以外的寫入 |
+
+- 沒通過時，後兩項寫進 `e2e` job 的 Job summary（哪個欄位出現在哪裡、哪個容器寫了哪個路徑），其餘由測試失敗。
+- 掃描只找得到 E2E 實際用過的值；E2E 沒走到的功能，外洩也看不到。
+- 容器寫入的允許清單在 `tools/commands/e2e.py` 的 `ALLOWED_WRITES`，只放暫存與快取（`/tmp`、`/run`、nginx 的快取、
+  nginx 啟動時從 template 產生的設定、Next 的 `.next/cache`）。要加進清單之前，先確認那個路徑重建後消失也沒關係。
 
 ## 覆蓋率門檻
 

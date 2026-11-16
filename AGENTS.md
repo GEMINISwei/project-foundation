@@ -37,6 +37,8 @@
 15. **新增的註解只能是例外**：寫成 `例外(<測試名稱>): <理由>`，指名的測試要執行到它底下那一行；
     新增的函式與類別 docstring 只能是 API 契約的說明。通用的規則改用型別、lint 與測試表達
     （[說明](docs/foundation/development.md#註解與文件)）。
+16. **每條 API 路由都宣告權限**：用 `require(...)`，不需要登入的標 `dependencies=[Depends(public())]`；
+    E2E 的 spec 一律從 `support` 匯入 `test`（[執行期契約](docs/foundation/testing.md#執行期契約)）。
 
 ## 漏了不會報錯的地方
 
@@ -44,16 +46,20 @@
 
 - **瀏覽器不直接呼叫後端**。要從畫面寫入時，在模組的 `actions.ts` 包一層具名、窄介面的 Server Action；
   不要在 nginx 或 Next 加 `/api/` 的轉送，也不要在 `shared/api/client.server.ts` 加 `"use server"`。
+  E2E 抓得到瀏覽器打 `/api/` 的請求，抓不到換了路徑的轉送。
 - **Server Action 的回傳值會送進瀏覽器**：寫入登入 cookie 的 action 回傳前要經過 `withoutData`。
+  E2E 走過的 action 會檢查回應裡有沒有 cookie 或密碼。
 - **不用 `NEXT_PUBLIC_*` 放設定**（建置時就固定了），執行期設定走 `shared/runtime/`。
 - **`apps/web/proxy.ts` 留在原位**：放錯位置 Next 照樣建置成功，路由保護卻整層消失。
-- **畫面上的權限判斷只是體驗**，每個後端端點都要用 `require(...)` 宣告權限。
+- **畫面上的權限判斷只是體驗**，真正的檢查在後端的 `require(...)`。
 - **後台的寫入要守住三條防提權的規則**（不授予自己沒有的權限、不管理權限比自己高的帳號、不改自己的角色與狀態），
   新增會改到帳號或角色的功能時比照 `modules/users/service.py`。
 - **AUDIT、log 與任務的 payload 只放 id 與固定的代碼**，不放帳號、暱稱或使用者輸入的內容。
+  `make e2e check` 會掃描 E2E 用過的值，E2E 沒走到的路徑掃不到。
 - **背景任務必須能重跑**；任務名稱不要改。
 - **上傳的檔案存在 `/app/uploads/<模組>/`**：存到別的路徑，重建容器就消失，也備份不到。
-- **schema、路由函式與 enum 的 docstring 會進公開的 API 契約**，內部說明寫在一般註解。
+  `make e2e check` 會列出 E2E 期間寫在 volume 以外的檔案。
+- **schema、路由函式與 enum 的 docstring 會進公開的 API 契約**，不放內部說明。
 - **主機的 reverse proxy 在 repo 之外**：它要覆寫 `X-Real-IP` 與 `X-Forwarded-Proto`，少了不會報錯
   （[說明](docs/foundation/operations.md#主機的-reverse-proxy)）。
 - **compose 的旗標不要自己組**，一律經過 `tools/compose.py`。
