@@ -21,12 +21,15 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   // 本機用 dot: 全部通過時只有一行點, 失敗的細節集中在最後。AI agent 每跑一次都要把輸出整段讀進
   // 上下文, 列出每一個通過的測試只是佔位置。
-  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "dot",
+  reporter: process.env.CI
+    ? [["list"], ["html", { open: "never" }], ["json", { outputFile: "results/results.json" }]]
+    : "dot",
   use: {
     baseURL,
     // 主要語系是中文, 斷言用的文案也是中文。proxy 依 Accept-Language 寫入語系 cookie。
     locale: "zh-TW",
     trace: "retain-on-failure",
+    screenshot: process.env.CI ? "on" : "off",
   },
   projects: [
     // 超管先登入一次並保存狀態, 其他測試預設載入它; 要從未登入開始的測試自己改成 SIGNED_OUT。
