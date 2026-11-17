@@ -221,6 +221,18 @@ def test_report_lists_suppressions_changed_tests_and_protected_files(tmp_path: P
     assert added_only not in summary
 
 
+def test_report_lists_dependency_manifests_for_review(tmp_path: Path) -> None:
+    manifests = {"apps/api/pyproject.toml": "[project]\n", "apps/web/package.json": "{}\n"}
+    code, _, summary = check(
+        tmp_path,
+        {SOURCE: "x = 1\n", **manifests},
+        {path: text + "\n" for path, text in manifests.items()},
+    )
+
+    assert code == 0
+    assert all(path in summary for path in manifests)
+
+
 def test_report_lists_deleted_test_files(tmp_path: Path) -> None:
     code, _, summary = check(tmp_path, {SOURCE: "x = 1\n"}, {WEB_TEST: None})
 
