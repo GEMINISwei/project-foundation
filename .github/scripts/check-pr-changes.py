@@ -358,7 +358,7 @@ def review_files(base: str, head: str, added: dict[str, dict[int, str]], review:
         statuses[path] = status
     for row in numstat:
         _, deleted, path = row.split("\t", 2)
-        if protected_files.is_protected(path):
+        if protected_files.is_reviewed(path):
             review.protected.append(path)
         if not test_lock.is_test_file(path) or statuses.get(path) == "A":
             continue

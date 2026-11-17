@@ -39,8 +39,6 @@ PROTECTED = [
     ".githooks/commit-msg",
     ".github/workflows/ci.yml",
     ".github/scripts/check-pr.sh",
-    "apps/api/pyproject.toml",
-    "apps/web/package.json",
     "apps/web/eslint.config.mjs",
     "apps/web/.dependency-cruiser.cjs",
     "apps/web/knip.ts",
@@ -52,7 +50,11 @@ PROTECTED = [
 # 不進版控, 但在這裡設 disableAllHooks 就能關掉所有 hook。
 LOCAL_ONLY = [".claude/settings.local.json"]
 
+# 相依清單常態會改, 不擋; CI 的 Job summary 仍列出來給審查看。
+REVIEWED_ONLY = ["apps/api/pyproject.toml", "apps/web/package.json"]
+
 ORDINARY = [
+    *REVIEWED_ONLY,
     "AGENTS.md",
     "docs/foundation/testing.md",
     ".agents/skills/feature-workflow/SKILL.md",
@@ -169,3 +171,8 @@ def test_editing_protected_approval_file_directly_is_denied(agent: str, repo: Pa
 def test_protected_paths_exist(path: str) -> None:
     # 檔案改名或搬家時, 保護清單會安靜地指到不存在的路徑。
     assert (REPO_ROOT / path).exists(), f"{path} 不存在: 防線檔案的清單要跟著改"
+
+
+@pytest.mark.parametrize("path", REVIEWED_ONLY)
+def test_reviewed_paths_exist(path: str) -> None:
+    assert (REPO_ROOT / path).exists(), f"{path} 不存在: 只列出給審查的清單要跟著改"
