@@ -493,3 +493,15 @@ def test_e2e_summary_says_so_when_there_are_no_results(tmp_path: Path) -> None:
 
     assert code == 0
     assert len(lines(summary)) == 1
+
+
+def test_report_does_not_list_test_files_whose_only_changes_are_comments(tmp_path: Path) -> None:
+    commented = "def test_keeps_order() -> None:\n    # 舊的說明\n    assert True\n"
+    code, errors, summary = check(
+        tmp_path,
+        {SOURCE: "x = 1\n", API_TEST: commented},
+        {API_TEST: TESTS[API_TEST]},
+    )
+
+    assert (code, errors) == (0, "")
+    assert "改掉既有內容的測試檔" not in summary
