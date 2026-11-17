@@ -376,8 +376,11 @@ def guarded(agent: str, repo: Path, path: str, before: str, old: str, new: str) 
             "new_string": new,
         }
     else:
-        removed = "".join(f"-{line}\n" for line in old.splitlines())
-        added = "".join(f"+{line}\n" for line in new.splitlines())
+        first = before.count("\n", 0, before.index(old))
+        old_lines = before.splitlines()[first : first + old.count("\n") + 1]
+        new_lines = before.replace(old, new, 1).splitlines()[first : first + new.count("\n") + 1]
+        removed = "".join(f"-{line}\n" for line in old_lines)
+        added = "".join(f"+{line}\n" for line in new_lines)
         patch = f"*** Begin Patch\n*** Update File: {path}\n@@\n{removed}{added}*** End Patch\n"
         tool, tool_input = "apply_patch", {"command": patch}
     payload = {"hook_event_name": "PreToolUse", "cwd": str(repo), "tool_name": tool}
