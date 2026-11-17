@@ -353,3 +353,78 @@ def test_shell_writes_to_tests_are_not_guarded(
 ) -> None:
     payload = {"cwd": str(implementing), "tool_name": "Bash", "tool_input": {"command": command}}
     assert not run(GUARD_COMMANDS, [agent], implementing, payload).strip(), command
+
+
+PYTHON_TEST = '''"""使用者的測試。"""
+
+
+def test_a() -> None:
+    """先建立帳號再登入。"""
+    # 先建立帳號
+    assert 1 == 1
+'''
+TS_TEST = 'it("排序不變", () => {\n  // 先排好\n  expect(1).toBe(1)\n})\n'
+
+
+def guarded(agent: str, repo: Path, path: str, before: str, old: str, new: str) -> str | None:
+    write(repo, path, before)
+    if agent == "claude":
+        tool = "Edit"
+        tool_input: dict[str, Any] = {
+            "file_path": str(repo / path),
+            "old_string": old,
+            "new_string": new,
+        }
+    else:
+        first = before.count("\n", 0, before.index(old))
+        old_lines = before.splitlines()[first : first + old.count("\n") + 1]
+        new_lines = before.replace(old, new, 1).splitlines()[first : first + new.count("\n") + 1]
+        removed = "".join(f"-{line}\n" for line in old_lines)
+        added = "".join(f"+{line}\n" for line in new_lines)
+        patch = f"*** Begin Patch\n*** Update File: {path}\n@@\n{removed}{added}*** End Patch\n"
+        tool, tool_input = "apply_patch", {"command": patch}
+    payload = {"hook_event_name": "PreToolUse", "cwd": str(repo), "tool_name": tool}
+    stdout = run(GUARD_TESTS, [agent], repo, {**payload, "tool_input": tool_input})
+    if not stdout.strip():
+        return None
+    return str(json.loads(stdout)["hookSpecificOutput"]["permissionDecision"])
+
+
+@pytest.mark.parametrize("agent", AGENTS)
+def test_editing_only_comments_and_docstrings_of_existing_tests_is_allowed(
+    agent: str, implementing: Path
+) -> None:
+    comment = guarded(agent, implementing, TEST, PYTHON_TEST, "# 先建立帳號", "# 先建立兩個帳號")
+    docstring = guarded(
+        agent, implementing, TEST, PYTHON_TEST, '"""先建立帳號再登入。"""', '"""建立帳號。"""'
+    )
+    module = guarded(agent, implementing, TEST, PYTHON_TEST, '"""使用者的測試。"""', '"""帳號。"""')
+    typescript = guarded(agent, implementing, OTHER_TEST, TS_TEST, "// 先排好", "// 後端排好")
+
+    assert (comment, docstring, module, typescript) == (None, None, None, None)
+
+
+@pytest.mark.parametrize("agent", AGENTS)
+def test_removing_a_comment_line_from_an_existing_test_is_allowed(
+    agent: str, implementing: Path
+) -> None:
+    old = "    # 先建立帳號\n    assert 1 == 1"
+
+    assert guarded(agent, implementing, TEST, PYTHON_TEST, old, "    assert 1 == 1") is None
+
+
+@pytest.mark.parametrize("agent", AGENTS)
+def test_changing_code_next_to_a_comment_is_still_blocked(agent: str, implementing: Path) -> None:
+    old = "    # 先建立帳號\n    assert 1 == 1"
+    new = "    # 改寫\n    assert 1 == 2"
+
+    assert guarded(agent, implementing, TEST, PYTHON_TEST, old, new) == BLOCKED[agent]
+
+
+@pytest.mark.parametrize("agent", AGENTS)
+def test_skip_written_in_a_comment_is_not_treated_as_skipping(
+    agent: str, implementing: Path
+) -> None:
+    new = "# skip 的情況之後再補"
+
+    assert guarded(agent, implementing, TEST, PYTHON_TEST, "# 先建立帳號", new) is None

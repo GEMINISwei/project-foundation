@@ -197,6 +197,7 @@ class Scanner:
         self.word = ""
         self.templates: list[int] = []
         self.comments: list[tuple[int, str, bool, bool]] = []
+        self.spans: list[tuple[int, int]] = []
 
     def advance(self, end: int) -> None:
         self.line += self.source.count("\n", self.index, end)
@@ -216,6 +217,7 @@ class Scanner:
             end = len(self.source) if close < 0 else close
             body = self.source[self.index + 2 : end]
         self.comments.append((self.line, body, self.full_line(), block))
+        self.spans.append((self.index, end))
         self.advance(end)
 
     def quoted(self, quote: str) -> None:
@@ -426,6 +428,42 @@ def contract_texts(head: str) -> set[str]:
     return texts
 
 
+def python_code(source: str) -> str:
+    lines = source.splitlines()
+    comments: list[tuple[int, int]] = []
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT:
+                comments.append(token.start)
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return source
+    for row, column in comments:
+        lines[row - 1] = lines[row - 1][:column]
+    for doc in python_docstrings(source):
+        for row in range(doc.start, doc.end + 1):
+            lines[row - 1] = ""
+    return "\n".join(lines)
+
+
+def typescript_code(source: str) -> str:
+    scanner = Scanner(source)
+    scanner.scan()
+    parts, position = [], 0
+    for start, end in scanner.spans:
+        parts.append(source[position:start])
+        parts.append("\n" * source.count("\n", start, end))
+        position = end
+    return "".join([*parts, source[position:]])
+
+
+def code_lines(path: str, source: str) -> list[str]:
+    if path.endswith(".py"):
+        source = python_code(source)
+    elif path.endswith((".ts", ".tsx")):
+        source = typescript_code(source)
+    return [line.rstrip() for line in source.splitlines() if line.strip()]
+
+
 def in_comment_scope(path: str) -> bool:
     return (
         path.endswith(COMMENT_SUFFIXES) and not GENERATED.search(path) and not CONFIG.search(path)
@@ -536,6 +574,8 @@ def review_suppressions(added: dict[str, dict[int, str]], review: Review) -> Non
 def review_files(base: str, head: str, added: dict[str, dict[int, str]], review: Review) -> None:
     test_lock = hook_module("test_lock")
     protected_files = hook_module("protected_files")
+    guard_tests = hook_module("guard_tests")
+    fork = git("merge-base", base, head).strip()
     span = f"{base}...{head}"
     numstat = git("diff", "--numstat", "--no-renames", span).splitlines()
     statuses = {}
@@ -550,10 +590,16 @@ def review_files(base: str, head: str, added: dict[str, dict[int, str]], review:
             continue
         if statuses.get(path) == "D":
             review.tests.append((path, "刪掉整個檔案"))
-        elif deleted not in ("0", "-"):
+        elif deleted not in ("0", "-") and code_changed(guard_tests, fork, head, path):
             review.tests.append((path, "改或刪了既有的行"))
         elif any(test_lock.SKIPS_TESTS.search(line) for line in added.get(path, {}).values()):
             review.tests.append((path, "加入跳過測試的寫法"))
+
+
+def code_changed(guard_tests: Any, base: str, head: str, path: str) -> bool:
+    before = "\n".join(code_lines(path, git("show", f"{base}:{path}")))
+    after = "\n".join(code_lines(path, git("show", f"{head}:{path}")))
+    return guard_tests.added_lines(before, after) is None
 
 
 def cell(text: str) -> str:
