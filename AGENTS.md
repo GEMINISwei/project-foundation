@@ -96,24 +96,22 @@
 同意過的不再問，CI 修幾輪、審查退回幾次都一樣；也不因為修了很多輪就順手做範圍外的事。
 目標環境、受影響的資料或風險變了（例如從補測試變成要放寬斷言）才重新問。
 
-被 hook 擋下時照它給的理由做。**要改既有的測試與防線檔案**：在對話訊息裡一次列出所有要改的檔案，每個寫原因與怎麼改
-（簡短即可），**最後才問一句是否全部同意**。清單不要塞進詢問視窗：項目一多會顯示不完，使用者看不到就無法判斷。
-同意後執行一次 `python3 .agents/hooks/approve.py <test|protected> <檔案…>`
-（[說明](docs/foundation/hooks-and-skills.md#測試鎖)）。
+被 hook 擋下時照它給的理由做。**要改既有的測試與防線檔案**：在對話訊息裡一次列出所有檔案與原因，最後才問一句是否全部同意，
+同意後執行一次 `approve.py`（[流程](docs/foundation/testing.md#改程式不改測試)）。
 
 ## 寫程式
 
 - **要進 `main` 的改動照 `feature-workflow` skill**（Feature Branch → Draft PR → Incremental Commits → Code Review →
-  Squash Merge）：驗收條件每條對應一個測試名稱、寫進 Draft PR 的「驗證」段，先寫測試再實作。
+  Squash Merge）：驗收條件寫進 Draft PR 的「驗證」段，每條有對應的驗證方式，改了行為的就是測試名稱
+  （[說明](docs/foundation/testing.md#驗收條件與驗證方式)）。新行為與 bug 修正先寫測試再實作。
 - **一次只有一個進行中的 PR**；要插隊照 `hotfix` skill 先問使用者。
 - **每個 commit 最後加 `Co-authored-by: <產品> <模型與版本> <email>`**。
 - **測試變紅時預設它是對的**，改實作讓它變綠。
 - **測試放該 app 的 `tests/`，與原始碼同構**。`actions.ts` 與 `ui/*.tsx` 不寫執行期測試，
   畫面的分支抽進 `capabilities.ts` 再測。不要為了覆蓋率數字補測試。
-- **程式碼要簡潔**：不加用不到的抽象、設定或參數；少量重複不急著抽成共用。
 - **優先讓程式碼自行表達意圖**；必要的註解簡短說明原因或限制（[說明](docs/foundation/development.md#註解與文件)）。
 - **參考既有寫法時，先確認情境適用**：避免直接沿用別處的特殊處理。
-- **一次的糾正寫得成檢查才升級成規則**；寫不成檢查的，留在當下那個任務，不寫進註解、文件或記憶。
+- **單次的糾正留在當下的任務**；要成為長期規則時，寫得成檢查就寫成檢查，寫不成的記進文件並寫明理由。
 - 程式碼裡的註解用半形標點，字串與 Markdown 用全形。
 - **CSS 只用設計變數**，不寫死色值或尺寸。
 - 一個任務交給一個 agent；不要兩個 agent 同時改同一個分支。
@@ -122,7 +120,7 @@
 
 | 改了什麼 | 要做 |
 |---|---|
-| 任何程式碼 | push，照 `watch-pr` 等 CI。完整的檢查只在 CI 跑；寫測試時只跑那一項確認紅燈 |
+| 任何程式碼 | 本機依影響範圍跑需要的 `make check <項目>`；push 後照 `watch-pr` 等 CI，合併只認 CI |
 | model 的欄位、索引、約束 | 照 `add-migration`：`make db migration "說明"`，讀過產出 |
 | 跟資料庫互動的後端程式 | `make check integration <測試檔>` |
 | 登入、導向、權限、cookie | `make e2e up` 後 `make e2e test <檔案>` |

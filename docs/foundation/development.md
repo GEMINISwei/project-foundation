@@ -53,19 +53,12 @@ make logs api        # 看某個服務的 log
 | `make db psql\|superuser\|revoke-sessions\|migration\|reset` | 資料庫與帳號 |
 | `make jobs list\|retry\|run` | 背景任務 |
 | `make backup`、`make backup restore db\|uploads` | 備份與還原 |
-| `make check <項目>` | 檢查與測試的單項（完整的檢查在 CI） |
+| `make check <項目>` | 檢查與測試的單項（依影響範圍在本機跑；合併只認 CI） |
 | `make e2e up\|test\|grep\|down\|check` | 瀏覽器測試 |
 | `make gen-types` | 重新產生契約與前端型別 |
 | `make release <版號>` | 準備發版 |
 
-改完之後要做什麼：
-
-| 改了什麼 | 要做 |
-|---|---|
-| 後端的 schema、路由、權限、語系 | `make gen-types`，兩份產出一起 commit |
-| model 的欄位、索引、約束 | `make db migration "說明"`，讀過產出 |
-| 登入、導向、權限、cookie | `make e2e up` 後 `make e2e test <檔案>` |
-| 行為有變 | `CHANGELOG.md` 的 `[Unreleased]` 留一筆 |
+改完之後要做什麼見 [`AGENTS.md`](../../AGENTS.md)〈改完之後〉。
 
 ## 程式碼風格
 

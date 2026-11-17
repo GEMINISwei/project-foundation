@@ -44,19 +44,15 @@ AGENTS.md                           兩家共用的規則 (不另設 CLAUDE.md)
 | 新增的行裡有跳過測試的寫法（`skip`、`skipif`、`xfail`、`fixme`、`importorskip`、`.only(`） | 擋下 |
 | 判斷不出來（notebook、讀不到原本的內容） | 擋下 |
 
-被擋下之後兩家的流程相同：
+被擋下之後，agent 先看是不是改實作或補新的案例就夠了；真的要改時照 [`testing.md`](testing.md#改程式不改測試)
+一次列出、問一句，同意後執行一次：
 
-1. agent 先看是不是改實作或補新的案例就夠了。
-2. 真的要改既有的測試時，在對話訊息裡**一次列出**所有要改的測試檔，每個寫原因與怎麼改（簡短即可），
-   最後才問一句是否全部同意。清單不放進詢問視窗：項目一多會顯示不完，使用者看不到就無法判斷。
-3. 使用者同意後，agent 執行一次：
+```bash
+python3 .agents/hooks/approve.py test apps/api/tests/modules/users/test_users.py e2e/tests/support.ts
+```
 
-   ```bash
-   python3 .agents/hooks/approve.py test apps/api/tests/modules/users/test_users.py e2e/tests/support.ts
-   ```
-
-   這個指令兩家都設成一定跳確認，使用者只按這一次。
-4. 之後在**這個分支上**改這幾個檔案不再詢問，修幾輪都一樣；沒列到的檔案、換了分支都要重新申請。
+這個指令兩家都設成一定跳確認，使用者只按這一次。之後在**這個分支上**改這幾個檔案不再詢問；
+沒列到的檔案、換了分支都要重新申請。
 
 放行記在 `.git/agent-approvals`（不進版控）。直接寫那個檔案、換個寫法執行 `approve.py` 會被擋下。
 只攔改檔工具；用 shell 指令改測試檔不會被攔，由審查時看 diff 補。只加不改也可能讓驗證變弱

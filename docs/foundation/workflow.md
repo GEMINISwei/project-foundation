@@ -17,9 +17,9 @@ Feature Branch → Draft PR → Incremental Commits → Code Review → Squash M
 1. **Feature Branch**：從最新的 `main` 開 `<type>/<kebab-case>`（`feat/product-list`）。一個分支只做一件事。
 2. **Draft PR**：第一次 push 就開 Draft PR，描述固定三段（[模板](../../.github/PULL_REQUEST_TEMPLATE.md)）：
    - **摘要**：改了什麼、為什麼。推新 commit 時回來補。
-   - **驗證**：[驗收條件](testing.md#驗收條件與測試名稱)與結果，成功失敗都寫。
+   - **驗證**：[驗收條件](testing.md#驗收條件與驗證方式)與結果，成功失敗都寫。
    - **檢查**：diff 看不出、要審查者去確認的事。
-3. **Incremental Commits**：一個 commit 一個說得清楚的步驟（先測試、再實作、再整理）。
+3. **Incremental Commits**：一個 commit 一個說得清楚的步驟。新行為與修正先測試、再實作；重構與設定依工作性質安排。
 4. **Code Review**：CI 綠、「驗證」寫完、整份 diff 自己讀過才轉 Ready for review（AI agent 自審後自己轉）。
    回應意見用新的 commit，不 force push。
 5. **Squash Merge**：由使用者合併，合併後刪分支。
