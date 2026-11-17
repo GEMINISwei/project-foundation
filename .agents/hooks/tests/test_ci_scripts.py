@@ -101,9 +101,7 @@ def test_suppression_without_a_reason_is_rejected(tmp_path: Path) -> None:
         {
             SOURCE: 'x = 1\nkind = "bearer"  # noqa: S105\n',
             WEB_SOURCE: (
-                "export const x = 1\n"
-                "// eslint-disable-next-line no-console\n"
-                "console.log(x)\n"
+                "export const x = 1\n// eslint-disable-next-line no-console\nconsole.log(x)\n"
             ),
         },
     )

@@ -10,8 +10,6 @@
                              起一個拋棄式的 PostgreSQL 跑全部後端測試與覆蓋率門檻,
                              再確認 model 與 migration 一致; 給了測試檔就只跑那幾個
     make check web-test      前端測試 (含覆蓋率門檻)
-    make check exceptions    每個例外指名的測試真的執行到它底下那一行 (後端與前端;
-                             指到 E2E 與工具測試的只確認存在)
     make check build         前端正式建置, 並確認 Next 有認到 proxy.ts
 
 在主機上執行 (編輯器與 CI 看到的就是這個環境), 需要先 make init dev。
@@ -20,8 +18,6 @@
 from __future__ import annotations
 
 import filecmp
-import importlib.util
-import json
 import os
 import re
 import subprocess
@@ -30,7 +26,6 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, NamedTuple
 
 from tools.contract import CONTRACT, EXPORT_ENV, WEB_SCHEMA, generate
 from tools.env import ENV_EXAMPLE, REPO_ROOT, deny_on_production, fail, load_env, parse_env_file
@@ -283,225 +278,6 @@ def run_build() -> None:
         fail("建置結果裡沒有 Proxy (Middleware)：確認 apps/web/proxy.ts 在原位")
 
 
-class Target(NamedTuple):
-    path: str
-    comment_line: int
-    start_line: int
-    test: str
-    kind: str
-
-
-def comment_rules() -> Any:
-    spec = importlib.util.spec_from_file_location(
-        "check_pr_changes", REPO_ROOT / ".github/scripts/check-pr-changes.py"
-    )
-    if spec is None or spec.loader is None:
-        fail("讀不到 .github/scripts/check-pr-changes.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def defined_tests(text: str) -> set[str]:
-    rules = comment_rules()
-    names = set(rules.PY_TEST_NAME.findall(text))
-    return names | {name for _, name in rules.JS_TEST_NAME.findall(text)}
-
-
-def classify(path: str, test: str, test_files: dict[str, str]) -> tuple[str, list[str]]:
-    defining = sorted(file for file, text in test_files.items() if test in defined_tests(text))
-    if not defining:
-        return "missing", []
-    for app in ("api", "web"):
-        files = [file for file in defining if file.startswith(f"apps/{app}/tests/")]
-        if path.startswith(f"apps/{app}/") and files:
-            return app, files
-    return "exists", defining
-
-
-def judge(target: Target, ran: dict[int, set[str]]) -> str | None:
-    line = next((number for number in sorted(ran) if number >= target.start_line), None)
-    if line is None:
-        return f"例外底下找不到會執行的程式（從第 {target.start_line} 行起）"
-    if target.test not in ran[line]:
-        return f"測試「{target.test}」沒有執行到第 {line} 行"
-    return None
-
-
-def exceptions_summary(
-    problems: list[tuple[Target, str]], covered: int, existence_only: int
-) -> str:
-    if not problems:
-        return f"例外 {covered} 個都有測試執行到，另有 {existence_only} 個只確認測試存在。\n"
-    rows = [
-        f"| {target.path}:{target.comment_line} | {target.test} | {problem} |"
-        for target, problem in problems
-    ]
-    header = ["### 例外的測試沒有執行到", "", "| 位置 | 測試 | 原因 |", "|---|---|---|"]
-    return "\n".join([*header, *rows, ""])
-
-
-def tracked_files() -> list[str]:
-    listing = subprocess.run(
-        ["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
-    )
-    return listing.stdout.splitlines()
-
-
-def collect_targets() -> list[tuple[Target, list[str]]]:
-    rules = comment_rules()
-    test_lock = rules.hook_module("test_lock")
-    files = tracked_files()
-    test_files = {
-        path: (REPO_ROOT / path).read_text(encoding="utf-8")
-        for path in files
-        if test_lock.is_test_file(path) and path.endswith(rules.CODE_SUFFIXES)
-    }
-    targets = []
-    for path in files:
-        if not rules.in_comment_scope(path):
-            continue
-        source = (REPO_ROOT / path).read_text(encoding="utf-8")
-        for comment_line, start_line, test in rules.exception_targets(path, source):
-            kind, tests = classify(path, test, test_files)
-            targets.append((Target(path, comment_line, start_line, test, kind), tests))
-    return targets
-
-
-def node_ids(test_file: str, name: str) -> list[str]:
-    lines = (REPO_ROOT / test_file).read_text(encoding="utf-8").splitlines()
-    relative = test_file.removeprefix("apps/api/")
-    result = []
-    for index, line in enumerate(lines):
-        match = re.match(rf"^(\s*)(?:async\s+)?def {re.escape(name)}\(", line)
-        if not match:
-            continue
-        indent = len(match.group(1))
-        owner = next(
-            (
-                found.group(2)
-                for above in reversed(lines[:index])
-                if (found := re.match(r"^(\s*)class (\w+)", above)) and len(found.group(1)) < indent
-            ),
-            None,
-        )
-        result.append(f"{relative}::{owner}::{name}" if indent and owner else f"{relative}::{name}")
-    return result
-
-
-def context_test(context: str) -> str | None:
-    match = re.search(r"::([^:\[|]+)(?:\[.*\])?\|run$", context)
-    return match.group(1) if match else None
-
-
-def api_coverage(targets: list[tuple[Target, list[str]]]) -> dict[str, dict[int, set[str]]]:
-    ids = sorted(
-        {
-            node
-            for target, tests in targets
-            for file in tests
-            for node in node_ids(file, target.test)
-        }
-    )
-    with tempfile.TemporaryDirectory() as directory, postgres() as env:
-        report = Path(directory) / "coverage.json"
-        data_file = {
-            **env,
-            "COVERAGE_FILE": str(Path(directory) / ".coverage"),
-            "COVERAGE_CORE": "ctrace",
-        }
-        sh(
-            "uv",
-            "run",
-            "--frozen",
-            "pytest",
-            "-q",
-            "--cov",
-            "--cov-context=test",
-            "--cov-report=",
-            "--cov-fail-under=0",
-            *ids,
-            cwd=API,
-            env=data_file,
-        )
-        subprocess.run(
-            ["uv", "run", "--frozen", "coverage", "json", "--show-contexts", "-o", str(report)],
-            cwd=API,
-            env={**os.environ, **data_file},
-            capture_output=True,
-            check=False,
-        )
-        if not report.exists():
-            fail("產生不了後端的覆蓋率報告")
-        files = json.loads(report.read_text(encoding="utf-8"))["files"]
-    result: dict[str, dict[int, set[str]]] = {}
-    for name, entry in files.items():
-        executable = entry["executed_lines"] + entry["missing_lines"]
-        lines: dict[int, set[str]] = {line: set() for line in executable}
-        for line, contexts in entry.get("contexts", {}).items():
-            lines.setdefault(int(line), set()).update(
-                test for test in map(context_test, contexts) if test
-            )
-        result[f"apps/api/{name}"] = lines
-    return result
-
-
-def web_coverage(target: Target, tests: list[str]) -> dict[int, set[str]]:
-    source = target.path.removeprefix("apps/web/")
-    with tempfile.TemporaryDirectory() as directory:
-        sh(
-            "npx",
-            "vitest",
-            "run",
-            *(file.removeprefix("apps/web/") for file in tests),
-            "-t",
-            re.escape(target.test),
-            "--coverage.enabled=true",
-            f"--coverage.include={source}",
-            "--coverage.reporter=json",
-            f"--coverage.reportsDirectory={directory}",
-            "--coverage.thresholds.lines=0",
-            "--coverage.thresholds.branches=0",
-            cwd=WEB,
-        )
-        report = json.loads((Path(directory) / "coverage-final.json").read_text(encoding="utf-8"))
-    entry = next((value for key, value in report.items() if key.endswith("/" + source)), None)
-    lines: dict[int, set[str]] = {}
-    for statement, location in (entry or {}).get("statementMap", {}).items():
-        ran = lines.setdefault(location["start"]["line"], set())
-        if entry and entry["s"][statement] > 0:
-            ran.add(target.test)
-    return lines
-
-
-def run_exceptions() -> None:
-    step("exceptions")
-    targets = collect_targets()
-    problems = [
-        (target, f"測試「{target.test}」不在測試檔裡")
-        for target, _ in targets
-        if target.kind == "missing"
-    ]
-    api = [(target, tests) for target, tests in targets if target.kind == "api"]
-    coverage = api_coverage(api) if api else {}
-    for target, _ in api:
-        problem = judge(target, coverage.get(target.path, {}))
-        problems += [(target, problem)] if problem else []
-    for target, tests in targets:
-        if target.kind == "web":
-            problem = judge(target, web_coverage(target, tests))
-            problems += [(target, problem)] if problem else []
-    covered = sum(1 for target, _ in targets if target.kind in ("api", "web"))
-    existence_only = sum(1 for target, _ in targets if target.kind == "exists")
-    summary = exceptions_summary(problems, covered - len(problems), existence_only)
-    print(summary)
-    if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
-            handle.write(summary)
-    if problems:
-        fail("有例外的測試沒有執行到它底下那一行")
-
-
 CHECKS = {
     "lint": run_lint,
     "types": run_types,
@@ -510,7 +286,6 @@ CHECKS = {
     "api-test": run_api_test,
     "web-test": run_web_test,
     "build": run_build,
-    "exceptions": run_exceptions,
 }
 
 

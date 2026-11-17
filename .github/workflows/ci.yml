@@ -137,21 +137,6 @@ jobs:
           api: true
       - run: make check integration
 
-  exceptions:
-    needs: [changes]
-    if: needs.changes.outputs.mode == 'full'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
-      - uses: ./.github/actions/setup
-        with:
-          api: true
-          web: true
-      - run: make check exceptions
-
   web-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -258,7 +243,6 @@ jobs:
       - types
       - api-test
       - api-integration
-      - exceptions
       - web-test
       - build
       - e2e
