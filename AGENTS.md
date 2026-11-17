@@ -34,10 +34,7 @@
 12. **已經發版的 migration 不可修改或刪除**；model 與 migration 要一致。
 13. **新增的抑制註解同一行要寫理由**（`# noqa`、`# type: ignore`、`eslint-disable`、跳過測試）。
 14. **skills 只放 `.agents/skills/`，hook 的邏輯只放 `.agents/hooks/`**，兩家的設定要一致。
-15. **新增的註解只能是例外**：寫成 `例外(<測試名稱>): <理由>`，指名的測試要執行到它底下那一行；
-    新增的函式與類別 docstring 只能是 API 契約的說明。通用的規則改用型別、lint 與測試表達
-    （[說明](docs/foundation/development.md#註解與文件)）。
-16. **每條 API 路由都宣告權限**：用 `require(...)`，不需要登入的標 `dependencies=[Depends(public())]`；
+15. **每條 API 路由都宣告權限**：用 `require(...)`，不需要登入的標 `dependencies=[Depends(public())]`；
     E2E 的 spec 一律從 `support` 匯入 `test`（[執行期契約](docs/foundation/testing.md#執行期契約)）。
 
 ## 漏了不會報錯的地方
@@ -114,7 +111,8 @@
 - **測試放該 app 的 `tests/`，與原始碼同構**。`actions.ts` 與 `ui/*.tsx` 不寫執行期測試，
   畫面的分支抽進 `capabilities.ts` 再測。不要為了覆蓋率數字補測試。
 - **程式碼要簡潔**：不加用不到的抽象、設定或參數；少量重複不急著抽成共用。
-- **參考既有的例外時，先比對條件**：例外是那個地方特有的處理，條件跟手上的功能一致才沿用，不一致就照通用的寫法。
+- **優先讓程式碼自行表達意圖**；必要的註解簡短說明原因或限制（[說明](docs/foundation/development.md#註解與文件)）。
+- **參考既有寫法時，先確認情境適用**：避免直接沿用別處的特殊處理。
 - **一次的糾正寫得成檢查才升級成規則**；寫不成檢查的，留在當下那個任務，不寫進註解、文件或記憶。
 - 程式碼裡的註解用半形標點，字串與 Markdown 用全形。
 - **CSS 只用設計變數**，不寫死色值或尺寸。
@@ -127,7 +125,6 @@
 | 任何程式碼 | push，照 `watch-pr` 等 CI。完整的檢查只在 CI 跑；寫測試時只跑那一項確認紅燈 |
 | model 的欄位、索引、約束 | 照 `add-migration`：`make db migration "說明"`，讀過產出 |
 | 跟資料庫互動的後端程式 | `make check integration <測試檔>` |
-| 加了例外註解 | `make check exceptions`，確認指名的測試執行得到 |
 | 登入、導向、權限、cookie | `make e2e up` 後 `make e2e test <檔案>` |
 | 後端的 schema、路由、權限、語系 | `make gen-types` |
 | 環境變數 | `.env.example`、`infra/compose/compose.yml`、讀取端（[說明](docs/foundation/development.md#環境變數)） |

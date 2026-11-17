@@ -1,10 +1,6 @@
-"""CI 的 PR 改動檢查與總閘: 新增的註解只能是例外, 審查要看的東西列在 Job summary。
+"""CI 的 PR 改動檢查與總閘: 抑制註解要寫理由, 審查要看的東西列在 Job summary。
 
-規則在 docs/foundation/development.md〈註解與文件〉: 通用的規則由型別、lint 與測試表達,
-註解只留給例外, 而且要指到一個測試。只看 PR 新增的行, 既有的註解改到才整理。
-
-審查證據由 CI 產生, 不由 agent 描述: 新增的例外與抑制註解、被改或刪的既有測試、被動到的防線檔案;
-沒有要看的項目時只有一行。
+Job summary 列出新增的抑制註解、被改或刪的既有測試、被動到的防線檔案; 沒有要看的項目時只有一行。
 """
 
 import json
@@ -85,99 +81,33 @@ def lines(text: str) -> list[str]:
     return [line for line in text.splitlines() if line.strip()]
 
 
-def test_new_plain_comment_is_rejected(tmp_path: Path) -> None:
+def test_new_plain_comment_is_allowed(tmp_path: Path) -> None:
     code, errors, _ = check(
         tmp_path,
         {SOURCE: "x = 1\n", WEB_SOURCE: "export const x = 1\n"},
         {
-            SOURCE: "x = 1\n# 先算小計\ny = 2\n",
-            WEB_SOURCE: "export const x = 1\n// 先算小計\nexport const y = 2 // 稅額\n",
+            SOURCE: "x = 1\n# 對帳要照原本的順序\ny = 2\n",
+            WEB_SOURCE: "export const x = 1\n// 後端已經排好\nexport const y = 2 // 含稅\n",
+        },
+    )
+
+    assert (code, errors) == (0, "")
+
+
+def test_suppression_without_a_reason_is_rejected(tmp_path: Path) -> None:
+    code, errors, _ = check(
+        tmp_path,
+        {SOURCE: "x = 1\n", WEB_SOURCE: "export const x = 1\n"},
+        {
+            SOURCE: 'x = 1\nkind = "bearer"  # ' + "noqa: S105\n",
+            WEB_SOURCE: "export const x = 1\n// eslint-"
+            + "disable-next-line no-console\nconsole.log(x)\n",
         },
     )
 
     assert code == 1
     assert f"{SOURCE}:2" in errors
     assert f"{WEB_SOURCE}:2" in errors
-    assert f"{WEB_SOURCE}:3" in errors
-
-
-def test_adding_to_an_existing_unmarked_comment_block_is_rejected(tmp_path: Path) -> None:
-    code, errors, _ = check(
-        tmp_path,
-        {SOURCE: "# 舊的說明\nx = 1\n"},
-        {SOURCE: "# 舊的說明\n# 再補一句\nx = 1\n"},
-    )
-
-    assert code == 1
-    assert f"{SOURCE}:2" in errors
-
-
-def test_exception_comment_naming_an_existing_test_is_allowed(tmp_path: Path) -> None:
-    code, errors, _ = check(
-        tmp_path,
-        {SOURCE: "x = 1\n", WEB_SOURCE: "export const x = 1\n"},
-        {
-            SOURCE: "x = 1\n# 例外(test_keeps_order): 這裡不能排序\ny = 2\n",
-            WEB_SOURCE: "export const x = 1\nexport const y = 2 // 例外(排序不變): 後端已經排好\n",
-        },
-    )
-
-    assert (code, errors) == (0, "")
-
-
-def test_exception_comment_naming_a_missing_test_is_rejected(tmp_path: Path) -> None:
-    code, errors, _ = check(
-        tmp_path,
-        {SOURCE: "x = 1\n", WEB_SOURCE: "export const x = 1\n"},
-        {
-            SOURCE: "x = 1\n# 例外(test_does_not_exist): 這裡不能排序\n",
-            WEB_SOURCE: "export const x = 1\n// 例外(沒有這個測試): 後端已經排好\n",
-        },
-    )
-
-    assert code == 1
-    assert "test_does_not_exist" in errors
-    assert "沒有這個測試" in errors
-
-
-def test_a_test_name_found_only_outside_test_files_does_not_count(tmp_path: Path) -> None:
-    code, errors, _ = check(
-        tmp_path,
-        {SOURCE: "x = 1\n"},
-        {SOURCE: "def test_only_here() -> None: ...\n\n\n# 例外(test_only_here): 理由\nx = 1\n"},
-    )
-
-    assert code == 1
-    assert "test_only_here" in errors
-
-
-def test_exception_comment_without_a_reason_is_rejected(tmp_path: Path) -> None:
-    code, errors, _ = check(
-        tmp_path,
-        {SOURCE: "x = 1\n"},
-        {SOURCE: "x = 1\n# 例外(test_keeps_order):\ny = 2\n"},
-    )
-
-    assert code == 1
-    assert f"{SOURCE}:2" in errors
-
-
-def test_continuation_lines_of_an_exception_are_allowed(tmp_path: Path) -> None:
-    code, errors, _ = check(
-        tmp_path,
-        {SOURCE: "x = 1\n", WEB_SOURCE: "export const x = 1\n"},
-        {
-            SOURCE: "x = 1\n# 例外(test_keeps_order): 這裡不能排序,\n# 順序是對帳用的\ny = 2\n",
-            WEB_SOURCE: (
-                "export const x = 1\n"
-                "/* 例外(排序不變): 後端已經排好,\n"
-                "   這裡再排一次會打亂分頁 */\n"
-                "export const y = 2\n"
-            ),
-        },
-    )
-
-    assert (code, errors) == (0, "")
 
 
 def test_suppressions_and_tool_directives_are_not_plain_comments(tmp_path: Path) -> None:
@@ -269,19 +199,13 @@ def test_report_is_one_line_when_there_is_nothing_to_review(tmp_path: Path) -> N
     assert len(lines(summary)) == 1
 
 
-def test_report_lists_new_exceptions_suppressions_changed_tests_and_protected_files(
-    tmp_path: Path,
-) -> None:
+def test_report_lists_suppressions_changed_tests_and_protected_files(tmp_path: Path) -> None:
     added_only = "apps/api/tests/modules/orders/test_more.py"
     code, _, summary = check(
         tmp_path,
         {SOURCE: "x = 1\n", ".github/workflows/ci.yml": "name: CI\n"},
         {
-            SOURCE: (
-                "x = 1\n"
-                "# 例外(test_keeps_order): 這裡不能排序\n"
-                'kind = "bearer"  # noqa: S105  # 憑證的種類, 不是密碼\n'
-            ),
+            SOURCE: 'x = 1\nkind = "bearer"  # noqa: S105  # 憑證的種類, 不是密碼\n',
             WEB_TEST: 'it("排序不變", () => { expect(1).toBe(1) })\n',
             API_TEST: TESTS[API_TEST] + "\n\ndef test_more() -> None: ...\n",
             added_only: "def test_new() -> None: ...\n",
@@ -290,8 +214,6 @@ def test_report_lists_new_exceptions_suppressions_changed_tests_and_protected_fi
     )
 
     assert code == 0
-    assert "test_keeps_order" in summary
-    assert "這裡不能排序" in summary
     assert "noqa: S105" in summary
     assert WEB_TEST in summary
     assert ".github/workflows/ci.yml" in summary
@@ -340,43 +262,14 @@ def test_gate_summary_is_one_line_when_everything_passed(tmp_path: Path) -> None
     assert len(lines(summary)) == 1
 
 
-CONTRACT_FILE = "contracts/openapi.json"
-
-
-def test_new_function_docstring_outside_the_api_contract_is_rejected(tmp_path: Path) -> None:
+def test_new_function_docstring_is_allowed(tmp_path: Path) -> None:
     code, errors, _ = check(
         tmp_path,
         {SOURCE: "x = 1\n"},
         {SOURCE: 'x = 1\n\n\ndef total() -> int:\n    """先算小計再加稅。"""\n    return 1\n'},
     )
 
-    assert code == 1
-    assert f"{SOURCE}:5" in errors
-
-
-def test_new_docstring_found_in_the_api_contract_is_allowed(tmp_path: Path) -> None:
-    contract = {"components": {"schemas": {"Order": {"description": "一筆訂單。\n\n金額含稅。"}}}}
-    code, errors, _ = check(
-        tmp_path,
-        {SOURCE: "x = 1\n", CONTRACT_FILE: "{}"},
-        {
-            SOURCE: 'class Order(BaseModel):\n    """一筆訂單。\n\n    金額含稅。\n    """\n',
-            CONTRACT_FILE: json.dumps(contract),
-        },
-    )
-
     assert (code, errors) == (0, "")
-
-
-def test_new_module_docstring_is_allowed_and_listed_in_the_report(tmp_path: Path) -> None:
-    code, errors, summary = check(
-        tmp_path,
-        {SOURCE: "x = 1\n"},
-        {SOURCE: '"""訂單的計算。"""\n\nx = 1\n'},
-    )
-
-    assert (code, errors) == (0, "")
-    assert "訂單的計算" in summary
 
 
 def test_existing_function_docstrings_are_left_alone(tmp_path: Path) -> None:
@@ -384,42 +277,6 @@ def test_existing_function_docstrings_are_left_alone(tmp_path: Path) -> None:
     code, errors, _ = check(tmp_path, {SOURCE: base}, {SOURCE: base + "\n\nx = 1\n"})
 
     assert (code, errors) == (0, "")
-
-
-def exception_targets(path: str, source: str) -> list[tuple[int, int, str]]:
-    import importlib.util
-
-    loaded = importlib.util.spec_from_file_location("check_pr_changes", CHECK)
-    assert loaded is not None
-    assert loaded.loader is not None
-    module = importlib.util.module_from_spec(loaded)
-    loaded.loader.exec_module(module)
-    return module.exception_targets(path, source)
-
-
-def test_exception_start_line_is_the_code_right_below_the_comment() -> None:
-    source = "x = 1\n# 例外(test_a): 理由\n# 接續\n\ny = 2\n"
-
-    assert exception_targets("a.py", source) == [(2, 5, "test_a")]
-
-
-def test_exception_start_line_of_a_definition_is_its_body() -> None:
-    python = "# 例外(test_a): 理由\n@cache\ndef f(\n    x: int,\n) -> int:\n    return x\n"
-    typescript = (
-        "// 例外(排序不變): 理由\n"
-        "export function sort(items: string[]): string[] {\n"
-        "  return items\n"
-        "}\n"
-    )
-
-    assert exception_targets("a.py", python) == [(1, 6, "test_a")]
-    assert exception_targets("a.ts", typescript) == [(1, 3, "排序不變")]
-
-
-def test_trailing_exception_starts_on_its_own_line() -> None:
-    source = "x = 1\ny = sorted(x)  # 例外(test_a): 理由\n"
-
-    assert exception_targets("a.py", source) == [(2, 2, "test_a")]
 
 
 E2E_SUMMARY = REPO_ROOT / ".github/scripts/e2e-summary.py"
