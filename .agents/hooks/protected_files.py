@@ -22,8 +22,6 @@ PROTECTED_DIRS = (
 )
 # lint、型別、架構邊界、未使用匯出與覆蓋率門檻的設定, 以及檢查的入口。
 PROTECTED_FILES = (
-    "apps/api/pyproject.toml",
-    "apps/web/package.json",
     "apps/web/eslint.config.mjs",
     "apps/web/.dependency-cruiser.cjs",
     "apps/web/knip.ts",
@@ -36,8 +34,16 @@ PROTECTED_FILES = (
 )
 
 
+# 相依清單常態會改, 不擋; 裡面也有檢查的設定, 所以仍列進 CI 的審查摘要。
+REVIEWED_FILES = ("apps/api/pyproject.toml", "apps/web/package.json")
+
+
 def is_protected(path: str) -> bool:
     return path.startswith(PROTECTED_DIRS) or path in PROTECTED_FILES
+
+
+def is_reviewed(path: str) -> bool:
+    return is_protected(path) or path in REVIEWED_FILES
 
 
 def pending_protected_edits(root: Path, files: list[str]) -> list[str]:

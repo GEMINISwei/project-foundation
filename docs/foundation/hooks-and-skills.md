@@ -68,10 +68,13 @@ python3 .agents/hooks/approve.py test apps/api/tests/modules/users/test_users.py
 | agent 的 hook 與設定 | `.agents/hooks/`、`.claude/`、`.codex/` |
 | git hook | `.githooks/` |
 | CI | `.github/workflows/`、`.github/scripts/`、`.github/actions/` |
-| 檢查的設定 | `apps/api/pyproject.toml`、`apps/web/package.json`、`eslint.config.mjs`、`.dependency-cruiser.cjs`、`knip.ts`、`tsconfig.json`、`vitest.config.ts`、`tools/ruff.toml` |
+| 檢查的設定 | `eslint.config.mjs`、`.dependency-cruiser.cjs`、`knip.ts`、`tsconfig.json`、`vitest.config.ts`、`tools/ruff.toml` |
 | 檢查的入口 | `Makefile`、`tools/commands/check.py`、`tools/commands/e2e.py` |
 
 改了這些不會有任何檢查變紅（刪掉一個 CI 步驟照樣綠燈），所以要讓使用者看到。清單在 `protected_files.py`。
+
+`apps/api/pyproject.toml` 與 `apps/web/package.json` 不擋：加相依、改 scripts 是例行改動。裡面也有後端的覆蓋率門檻與
+ruff、mypy 的設定，所以改了仍列在 `pr` job 的 Job summary「動到的防線檔案」，由審查確認。
 `AGENTS.md`、`docs/`、skills 刻意不保護：改了一樣在 diff 裡看得到。
 
 ### 部署與發布
