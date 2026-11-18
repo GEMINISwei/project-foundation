@@ -84,7 +84,7 @@
 - 改防線檔案（hook、agent 設定、CI、檢查的設定與入口）
 - 不可逆或影響 repo 以外的動作：部署、發布、刪資料或分支、動主機、改別的 repo、送出外部服務
 - 升級相依：先在乾淨的環境實際安裝並跑過檢查，確認整組相容；有不相容的要告知並提出替代方案
-- 還有開著的 PR 時插隊開分支（`hotfix` skill）
+- 還有開著的 PR 時插隊開分支（`feature-workflow`〈插隊〉）
 
 **不做**：
 
@@ -104,7 +104,7 @@
 - **要進 `main` 的改動照 `feature-workflow` skill**（Feature Branch → Draft PR → Incremental Commits → Code Review →
   Squash Merge）：驗收條件寫進 Draft PR 的「驗證」段，每條有對應的驗證方式，改了行為的就是測試名稱
   （[說明](docs/foundation/testing.md#驗收條件與驗證方式)）。新行為與 bug 修正先寫測試再實作。
-- **一次只有一個進行中的 PR**；要插隊照 `hotfix` skill 先問使用者。
+- **一次只有一個進行中的 PR**；要插隊照 `feature-workflow`〈插隊〉先問使用者。
 - **每個 commit 最後加 `Co-authored-by: <產品> <模型與版本> <email>`**。
 - **測試變紅時預設它是對的**，改實作讓它變綠。
 - **測試放該 app 的 `tests/`，與原始碼同構**。`actions.ts` 與 `ui/*.tsx` 不寫執行期測試，

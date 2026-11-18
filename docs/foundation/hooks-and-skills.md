@@ -25,7 +25,7 @@ AGENTS.md                           兩家共用的規則 (不另設 CLAUDE.md)
 
 | 腳本 | 時機 | 做什麼 |
 |---|---|---|
-| `guard_commands.py` | 執行 shell 指令前 | 擋下部署、發布、合併與繞過檢查的指令；有開著的 PR 時開新分支要確認。轉 Ready 不擋 |
+| `guard_commands.py` | 執行 shell 指令前 | 擋下部署、發布、合併與繞過檢查的指令。轉 Ready 不擋 |
 | `guard_tests.py` | 用改檔工具改檔前 | 測試鎖、防線檔案 |
 | `session_context.py` | 開新 session、恢復或壓縮上下文後 | 不擋，把分支、開著的 PR、測試鎖的狀態加進上下文 |
 
@@ -92,8 +92,8 @@ GitHub 端刻意不設 environment 的 Required reviewers，這裡是部署前�
 
 ### 一次一個 PR
 
-還有自己開著的 PR 時，開新分支、`git worktree add`、`gh pr create` 要確認。要插隊時照 `hotfix` skill 說明後，
-用 `approve.py branch <分支名稱>` 申請。查不到 PR（沒網路、沒登入）時放行；Dependabot 的 PR 不算。
+是工作規則（[說明](workflow.md#一次一個-pr)），hook 不擋開分支：它只影響工作安排，擋錯了也只是多一個分支，
+不值得每次開分支都查 GitHub。`session_context.py` 開工時列出開著的 PR 提醒 agent。
 
 ## Skills
 
@@ -102,7 +102,6 @@ GitHub 端刻意不設 environment 的 Required reviewers，這裡是部署前�
 | `feature-workflow` | 任何要進 `main` 的改動：開分支、驗收條件、先寫測試、Draft PR、實作、自審、轉 Ready 交給使用者審查 |
 | `watch-pr` | 開好或更新 PR 之後：等 CI、失敗就修、合併後同步本機 |
 | `add-migration` | 改了 model 之後 |
-| `hotfix` | 正式環境出問題、但還有 PR 開著 |
 | `release` | 發版。只能由使用者手動呼叫 |
 | `sync-foundation` | 子專案要把 foundation 的更新帶進來。只能由使用者手動呼叫 |
 

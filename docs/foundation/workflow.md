@@ -27,8 +27,8 @@ Feature Branch → Draft PR → Incremental Commits → Code Review → Squash M
 ### 一次一個 PR
 
 前一個 PR 合併（或關閉）後才開下一個分支。等合併時可以討論下一件事，但不開分支、不動檔案。
-正式環境出問題等不及時，由使用者決定要不要插隊（AI agent 照 `hotfix` skill）。
-agent 這一側由 hook 確認（[說明](hooks-and-skills.md#一次一個-pr)）；Dependabot 的 PR 不算。
+正式環境出問題等不及時，由使用者決定要不要插隊（AI agent 照 `feature-workflow`〈插隊〉）。
+這是工作規則，hook 不擋；開新 session 時 SessionStart 會列出開著的 PR 提醒 agent。Dependabot 的 PR 不算。
 
 ### GitHub 設定
 

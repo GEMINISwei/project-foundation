@@ -4,7 +4,7 @@
 用法 (由 .claude/settings.json 與 .codex/hooks.json 呼叫): guard_commands.py <claude|codex>
 
 - deny: push 到 main、略過 git hook、合併、發布與部署、自己寫放行
-- 確認: publish.sh、`gh api` 寫入、`gh run rerun`、有開著的 PR 時開新分支。
+- 確認: publish.sh、`gh api` 寫入、`gh run rerun`。
   Claude 回 ask; Codex 不支援 ask, 回 deny 並說明怎麼取得同意。
 
 只認常見寫法, 不追求繞不過: 換寫法擋不住是已知的取捨, 由 CI 與審查補。只用標準函式庫。
@@ -20,8 +20,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import approvals
-import branch_lock
-from test_lock import repo_root
 
 SEPARATORS = {"&&", "||", ";", "|", "&", "(", ")", ";;", "|&"}
 WRAPPERS = {"sudo", "env", "command", "exec", "time", "nohup", "xargs"}
@@ -52,7 +50,7 @@ DENY_DEPLOY = (
     "使用者同意後才執行（release skill）。重新部署或回滾由使用者自己觸發。"
 )
 DENY_SELF_APPROVAL = (
-    f"放行只能用 `{' '.join(approvals.COMMAND)} <test|protected|branch> …` 申請，它會跳確認；"
+    f"放行只能用 `{' '.join(approvals.COMMAND)} <test|protected> …` 申請，它會跳確認；"
     "不要直接寫放行檔或換寫法呼叫。"
 )
 
@@ -257,43 +255,6 @@ def needs_confirmation(argv: list[str]) -> str | None:
     return None
 
 
-def new_branch(argv: list[str], cwd: str) -> str | None:
-    """這個指令會開始的新分支 (開分支、worktree、PR); 不是的話回傳 None。"""
-    if program(argv) == "gh":
-        if argv[1:3] != ["pr", "create"]:
-            return None
-        head = [argv[i + 1] for i, arg in enumerate(argv[:-1]) if arg in {"--head", "-H"}]
-        return head[0] if head else current_branch(cwd)
-    if program(argv) != "git":
-        return None
-    subcommand, args = git_subcommand(argv)
-    flags = {arg for arg in args if arg.startswith("-")}
-    positional = [arg for arg in args if not arg.startswith("-")]
-    if subcommand == "switch" and {"-c", "-C", "--create", "--force-create"} & flags:
-        return positional[0] if positional else ""
-    if subcommand == "checkout" and {"-b", "-B"} & flags:
-        return positional[0] if positional else ""
-    if subcommand == "branch" and not flags and positional:
-        return positional[0]
-    if subcommand == "worktree" and positional[:1] == ["add"]:
-        named = [args[i + 1] for i, arg in enumerate(args[:-1]) if arg in {"-b", "-B"}]
-        if named:
-            return named[0]
-        return positional[2] if len(positional) > 2 else positional[-1].rsplit("/", 1)[-1]
-    return None
-
-
-def parallel_branches(commands: list[list[str]], cwd: str) -> list[str]:
-    """還有開著的 PR 時, 要開始而且還沒被放行的分支。"""
-    found = [new_branch(argv, cwd) for argv in commands]
-    branches = {branch for branch in found if branch is not None}
-    root = repo_root(Path(cwd))
-    if not branches or root is None:
-        return []
-    pending = branches - approvals.approved(root, "branch")
-    return sorted(pending) if pending and branch_lock.open_prs(cwd) else []
-
-
 def decide(decision: str, reason: str) -> None:
     output = {
         "hookSpecificOutput": {
@@ -330,12 +291,6 @@ def main() -> int:
         if reason:
             confirm(agent, reason, "向使用者說明要做什麼，請使用者自己執行。")
             return 0
-    branches = parallel_branches(commands, cwd)
-    if branches:
-        approve = " ".join([*approvals.COMMAND, "branch", *branches])
-        reason = "使用者還有開著的 PR：一次一個 PR，插隊要使用者同意（hotfix skill）"
-        confirm(agent, reason, f"使用者同意插隊後執行 `{approve}`，它會跳確認。")
-        return 0
     # permissions.ask 也列了它; 這裡再回 ask 是因為權限模式可能略過設定檔。Codex 由 rule 負責。
     if agent == "claude" and any(argv[0] == PUBLISH_COMMAND for argv in commands):
         decide("ask", "發布 release 會直接部署：確認使用者看過 preview.sh 的內容並同意發布。")

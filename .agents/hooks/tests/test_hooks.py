@@ -200,6 +200,38 @@ def test_guard_ignores_tools_other_than_shell(agent: str, on_feature: Path) -> N
     assert run_guard(agent, "git push origin main", on_feature, tool="Read") is None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git switch -c feat/next",
+        "git checkout -b feat/next",
+        "git worktree add ../next -b feat/next",
+        "gh pr create --draft --title 'feat: next'",
+    ],
+)
+@pytest.mark.parametrize("agent", AGENTS)
+def test_guard_does_not_block_new_branches_with_open_prs(
+    agent: str, command: str, on_feature: Path, tmp_path: Path
+) -> None:
+    # 一次一個 PR 是工作規則, 由 SessionStart 提醒; hook 不查 GitHub, 也不擋開分支。
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text('#!/bin/sh\necho \'[{"headRefName": "feat/x"}]\'\n', encoding="utf-8")
+    gh.chmod(0o755)
+    payload = {"cwd": str(on_feature), "tool_name": "Bash", "tool_input": {"command": command}}
+    result = subprocess.run(
+        [sys.executable, GUARD, agent],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        cwd=on_feature,
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+        check=True,
+    )
+    assert not result.stdout.strip(), f"不該擋下: {command}"
+
+
 PUBLISH_COMMAND = ".agents/skills/release/scripts/publish.sh"
 CODEX_RULES = REPO_ROOT / ".codex" / "rules"
 
