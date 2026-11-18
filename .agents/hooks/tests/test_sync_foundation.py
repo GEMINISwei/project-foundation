@@ -180,6 +180,22 @@ def test_apply_adds_new_files_and_removes_deleted_ones(child: Path, foundation: 
     assert not (child / "tools/old.py").exists()
 
 
+def test_apply_removes_directories_left_empty_by_deleted_files(tmp_path: Path) -> None:
+    # 空目錄 git 不追蹤, CI 的全新 clone 看不到; 留在本機會被當成還存在的 skill 或模組。
+    files = {**INITIAL, "skills/old/SKILL.md": "old\n", "skills/kept/SKILL.md": "kept\n"}
+    foundation = new_repo(tmp_path / "foundation", files)
+    child = new_repo(tmp_path / "child", files)
+    assert sync(child, "init", str(foundation)).returncode == 0
+    commit(child, "record foundation")
+    (foundation / "skills/old/SKILL.md").unlink()
+    commit(foundation, "remove old skill")
+
+    assert sync(child, "apply").returncode == 0
+
+    assert not (child / "skills/old").exists()
+    assert (child / "skills/kept/SKILL.md").exists()
+
+
 def test_apply_keeps_the_executable_bit(child: Path, foundation: Path) -> None:
     write(foundation, {"tools/run.sh": "#!/bin/sh\n"})
     (foundation / "tools/run.sh").chmod(0o755)
