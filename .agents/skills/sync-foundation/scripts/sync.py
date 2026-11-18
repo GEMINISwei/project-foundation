@@ -172,6 +172,14 @@ def write_blob(path: str, mode: str, blob: str) -> None:
     target.chmod(0o755 if mode == "100755" else 0o644)
 
 
+def remove_empty_parents(path: Path) -> None:
+    # git 不追蹤空目錄, 留著會被當成還存在的 skill 或模組。
+    for parent in path.parents:
+        if parent == Path(".") or any(parent.iterdir()):
+            return
+        parent.rmdir()
+
+
 def drift(base_tree: dict[str, tuple[str, str]], changed: set[str]) -> list[str]:
     """歸 foundation、這段期間 foundation 沒動, 但子專案與上次同步時不同的檔案。"""
     return sorted(
@@ -189,6 +197,7 @@ def write_change(path: str, kind: str, content: bytes, head: tuple[str, str] | N
         write_blob(path, *head)
     elif kind == ADOPT:
         os.remove(path)
+        remove_empty_parents(Path(path))
     elif kind in (MERGE, CONFLICT):
         Path(path).write_bytes(content)
 
