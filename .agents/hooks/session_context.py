@@ -71,9 +71,6 @@ def context(root: Path) -> str:
         )
     else:
         lines.append("- 實作還沒開始（測試檔還沒鎖定）")
-    branches = sorted(approvals.approved(root, "branch"))
-    if branches:
-        lines.append(f"- 使用者同意插隊的分支：{'、'.join(branches)}")
     return "\n".join(lines)
 
 

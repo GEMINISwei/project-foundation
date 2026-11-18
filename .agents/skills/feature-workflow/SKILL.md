@@ -7,7 +7,7 @@ description: 開始任何要進 main 的改動時使用（新功能、修正、�
 
 規則在 [`workflow.md`](../../../docs/foundation/workflow.md#開發流程) 與 [`testing.md`](../../../docs/foundation/testing.md)。
 
-1. **開分支**：`gh pr list --author @me --state open` 有開著的 PR 就停下來回報；正式環境出問題才照 `hotfix`。
+1. **開分支**：`gh pr list --author @me --state open` 有開著的 PR 就停下來回報；正式環境出問題才照下面的〈插隊〉。
    沒有就從最新的 `main` 開 `<type>/<kebab-case>`。一個分支只做一件事，途中發現的別的問題記下來另開。
 2. **驗收條件**：每條接一個驗證方式，照 [`testing.md`](../../../docs/foundation/testing.md#驗收條件與驗證方式)
    依工作性質選；什麼時候要先給使用者確認也寫在那裡。這份驗收條件就是這個任務的範圍。
@@ -31,3 +31,14 @@ description: 開始任何要進 main 的改動時使用（新功能、修正、�
 8. **更新 PR 描述**：「摘要」對上最新 diff，「驗證」每條寫結果（成功失敗都寫），「檢查」只列 diff 看不出、要人確認的事。
    push 後照 `watch-pr` 等 CI，全綠後 `gh pr ready <PR 號碼>` 轉 Ready for review、開始等合併，再回報使用者。
    合併由使用者做。
+
+## 插隊
+
+正式環境出問題、但還有 PR 開著等合併時。**要不要插隊由使用者決定**，不自己判斷「這個夠急」。
+
+1. **說明並取得同意**：發生什麼事、影響誰、有沒有暫時處理方式；為什麼等不及開著的 PR（號碼與狀態）；
+   打算怎麼修、分支名稱 `fix/<kebab-case>`。不同意就把問題記下來，回原本的 PR。
+2. **修正**：從最新的 `main` 開分支，照上面第 2～8 步，驗收條件只寫這個問題，先寫能重現的測試。
+   不順手整理，也不搬進行中 PR 的內容。要立刻上線照 `release`，發布前一樣要使用者同意。
+3. **回到原本的 PR**：合併後切回去 `git merge origin/main`（不 rebase 審過的 commit）、push，照 `watch-pr` 等 CI，
+   告訴使用者原本的 PR 已跟上。

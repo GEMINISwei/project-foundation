@@ -1,8 +1,7 @@
 """使用者的放行紀錄: `.git/agent-approvals`, 只由 approve.py 寫入 (Codex rule 讓它一定跳確認)。
 
-- test、protected: 放行列出的檔案, 在寫下時的那個分支上有效 (換分支就失效): 一次說明、
-  一次確認, 之後在同一個任務裡改這些檔案不再詢問。
-- branch: 有開著的 PR 時插隊的分支名稱, 不隨 commit 失效。
+test、protected 兩類: 放行列出的檔案, 在寫下時的那個分支上有效 (換分支就失效): 一次說明、
+一次確認, 之後在同一個任務裡改這些檔案不再詢問。
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from pathlib import Path
 
 NAME = "agent-approvals"
 COMMAND = ["python3", ".agents/hooks/approve.py"]
-KINDS = ("test", "protected", "branch")
+KINDS = ("test", "protected")
 
 
 def git(cwd: Path, *args: str) -> str | None:
@@ -46,7 +45,7 @@ def scope(root: Path) -> str | None:
 
 def approved(root: Path, kind: str) -> set[str]:
     data = load(root)
-    if kind != "branch" and data.get("scope") != scope(root):
+    if data.get("scope") != scope(root):
         return set()
     values = data.get(kind, [])
     if not isinstance(values, list):
