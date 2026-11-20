@@ -180,6 +180,21 @@ def test_e2e_support_files_count_as_tests(agent: str, implementing: Path) -> Non
     assert decision(agent, implementing, E2E_SUPPORT) == BLOCKED[agent]
 
 
+@pytest.mark.parametrize("agent", AGENTS)
+def test_skill_script_change_locks_that_skills_tests(agent: str, repo: Path) -> None:
+    script, test = ".agents/skills/demo/scripts/run.py", ".agents/skills/demo/tests/test_run.py"
+    for name in (script, test):
+        write(repo, name)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "skill")
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    assert decision(agent, repo, test) is None
+
+    write(repo, script, "changed\n")
+
+    assert decision(agent, repo, test) == BLOCKED[agent]
+
+
 NEW_TEST = "apps/api/tests/modules/users/test_new.py"
 
 
