@@ -50,7 +50,7 @@ def relative(root: Path, cwd: Path, path: str) -> str:
 
 
 def is_test_file(path: str) -> bool:
-    """各 app 與各 skill 的 `tests/`、`e2e/tests/`、hook 與 make 指令自己的測試, 輔助檔與測試資料也算。"""
+    """各 app 與 skill 的 `tests/`、`e2e/tests/`、hook 與 make 指令的測試, 含輔助檔與測試資料。"""
     parts = path.split("/")
     in_app_tests = len(parts) > 3 and parts[0] == "apps" and parts[2] == "tests"
     in_skill_tests = len(parts) > 4 and parts[:2] == [".agents", "skills"] and parts[3] == "tests"

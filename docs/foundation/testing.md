@@ -16,7 +16,7 @@
 | `apps/api/tests/` | 後端。與原始碼同構（`tests/modules/users/` 對 `modules/users/`） | `make check api-test`、`make check integration` |
 | `apps/web/tests/` | 前端的規則與共用元件。與原始碼同構 | `make check web-test` |
 | `e2e/tests/` | 整套系統從瀏覽器走一遍 | `make e2e test <檔案>`、`make e2e check` |
-| `.agents/hooks/tests/`、`tools/tests/` | agent 的 hook、`make` 指令 | 併在 `make check api-test` |
+| `.agents/hooks/tests/`、`.agents/skills/<skill>/tests/`、`tools/tests/` | agent 的 hook、skill 的腳本、`make` 指令。skill 的測試目錄旁要有自己的 `pytest.ini` | 併在 `make check api-test` |
 
 放在這些目錄以外的測試不會執行，也不會報錯。
 
