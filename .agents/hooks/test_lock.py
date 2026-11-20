@@ -25,8 +25,15 @@ EXPLAIN = (
 )
 # 加一行就讓既有的測試不再執行的寫法: skip、skipif、xfail、fixme、importorskip 與 .only(。
 SKIPS_TESTS = re.compile(r"\b(?:skip\w*|xfail|fixme|importorskip)\b|\.only\(")
-# 有測試在守的程式: 各 app、E2E、hook、CI 腳本與 make 指令的實作。
-IMPLEMENTATION_DIRS = ("apps/", "e2e/", ".agents/hooks/", ".github/scripts/", "tools/")
+# 有測試在守的程式: 各 app、E2E、hook、skill 的腳本、CI 腳本與 make 指令的實作。
+IMPLEMENTATION_DIRS = (
+    "apps/",
+    "e2e/",
+    ".agents/hooks/",
+    ".agents/skills/",
+    ".github/scripts/",
+    "tools/",
+)
 
 
 def repo_root(cwd: Path) -> Path | None:
@@ -43,10 +50,15 @@ def relative(root: Path, cwd: Path, path: str) -> str:
 
 
 def is_test_file(path: str) -> bool:
-    """各 app 的 `tests/`、`e2e/tests/`、hook 與 make 指令自己的測試, 輔助檔與測試資料也算。"""
+    """各 app 與各 skill 的 `tests/`、`e2e/tests/`、hook 與 make 指令自己的測試, 輔助檔與測試資料也算。"""
     parts = path.split("/")
     in_app_tests = len(parts) > 3 and parts[0] == "apps" and parts[2] == "tests"
-    return in_app_tests or path.startswith(("e2e/tests/", ".agents/hooks/tests/", "tools/tests/"))
+    in_skill_tests = len(parts) > 4 and parts[:2] == [".agents", "skills"] and parts[3] == "tests"
+    return (
+        in_app_tests
+        or in_skill_tests
+        or path.startswith(("e2e/tests/", ".agents/hooks/tests/", "tools/tests/"))
+    )
 
 
 def is_implementation(path: str) -> bool:
