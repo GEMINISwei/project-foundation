@@ -25,10 +25,10 @@ from sqlalchemy import text
 from app.cli import alembic_config
 from app.registry import ENABLED_MODULES
 from app.server import app
+from shared import rate_limit
 from shared.auth import passwords
 from shared.db.base import Base
 from shared.db.session import engine, start_engine, stop_engine
-from shared import rate_limit
 from shared.platform import event_bus, unit_of_work
 
 
