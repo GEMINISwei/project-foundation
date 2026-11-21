@@ -9,7 +9,9 @@ description: 開好或更新 PR 之後使用：在背景等 CI，失敗就直接
 
 ## 1. 等 CI（每次 push 後）
 
-`gh pr checks <PR 號碼> --watch --fail-fast`：任何一個 job 失敗就結束，不必等其他 job 跑完。
+push 之後背景執行 `.agents/skills/watch-pr/scripts/wait-ci.sh`：等本機 `HEAD` 那個 commit 的 `CI` 與 `PR` 兩個 workflow，
+任何一個 job 失敗就結束，不必等其他 job 跑完（不用 `gh pr checks --watch`，它會在 CI 的 run 出現之前就結束）。
+結束碼 1 是有 run 失敗，stdout 列出 run id 與失敗的 job；結束碼 2 是等不到結果，讀 stderr 回報使用者，不要自己重開。
 失敗時 `gh run view <run id> --log-failed` 只讀失敗段落，**直接修正、commit、push**（新的 commit 會取消還在跑的舊 run），
 再回到這一步等。例外：
 

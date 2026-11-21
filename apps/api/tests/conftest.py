@@ -6,7 +6,9 @@
 
 import asyncio
 import os
+import time
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 
 # 設定在 import 應用程式之前就要存在。
 os.environ.setdefault("PROJECT_NAME", "test")
@@ -23,6 +25,7 @@ from sqlalchemy import text
 from app.cli import alembic_config
 from app.registry import ENABLED_MODULES
 from app.server import app
+from shared import rate_limit
 from shared.auth import passwords
 from shared.db.base import Base
 from shared.db.session import engine, start_engine, stop_engine
@@ -33,6 +36,14 @@ from shared.platform import event_bus, unit_of_work
 def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
     # 正式的成本一次約 0.2 秒, 測試裡每建立一個帳號都要付一次。
     monkeypatch.setattr(passwords, "ROUNDS", 4)
+
+
+@pytest.fixture(autouse=True)
+def rate_limit_clock_inside_one_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 限流是固定時間窗: 一個測試的幾次請求跨過窗口交界時計數歸零, 該擋的偶爾沒擋。
+    # 停在整點後 1 秒, 窗口長度只要整除 3600 就不會跨窗。
+    now = time.time() // 3600 * 3600 + 1
+    monkeypatch.setattr(rate_limit, "time", SimpleNamespace(time=lambda: now))
 
 
 @pytest.fixture(scope="session")
