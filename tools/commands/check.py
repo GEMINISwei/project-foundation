@@ -204,8 +204,9 @@ def run_api_test() -> None:
     step("api-test")
     quick = ("uv", "run", "--frozen", "pytest", "-q", "-n", "auto")
     sh(*quick, "-m", "not integration", cwd=API, env=EXPORT_ENV)
-    # agent 的 hook 與 make 指令是獨立的小程式, 借用 api 的測試環境執行。
-    for directory in (REPO_ROOT / ".agents/hooks", REPO_ROOT / "tools"):
+    # agent 的 hook、skill 的腳本與 make 指令是獨立的小程式, 借用 api 的測試環境執行。
+    skills = sorted(tests.parent for tests in (REPO_ROOT / ".agents/skills").glob("*/tests"))
+    for directory in (REPO_ROOT / ".agents/hooks", *skills, REPO_ROOT / "tools"):
         config = ("-c", str(directory / "pytest.ini"), "--rootdir", str(directory))
         sh(*quick, *config, str(directory / "tests"), cwd=API)
 

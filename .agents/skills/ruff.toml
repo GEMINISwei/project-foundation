@@ -2,3 +2,7 @@
 extend = "../hooks/ruff.toml"
 # 快取不放這裡: skills/ 底下每個資料夾都會被當成一個 skill。
 cache-dir = "../hooks/.ruff_cache"
+
+[lint.per-file-ignores]
+# 與 hook 的測試相同。
+"*/tests/**" = ["S101", "S105", "S106", "S603", "S607", "ARG001", "ARG002"]

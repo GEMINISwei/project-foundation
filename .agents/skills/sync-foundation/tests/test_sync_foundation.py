@@ -14,10 +14,9 @@ import sys
 from pathlib import Path
 
 import pytest
-from support import REPO_ROOT
 
 GIT = shutil.which("git") or "git"
-SCRIPT = REPO_ROOT / ".agents/skills/sync-foundation/scripts/sync.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts/sync.py"
 # 不讀開發者自己的 git 設定 (簽章、hooksPath、預設分支名稱)。
 ENV = {
     **os.environ,
