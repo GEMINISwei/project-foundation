@@ -26,7 +26,8 @@ trace 的特定部分，再用 `make e2e test <檔案>` 只重跑那幾個。
 ## 2. 等合併（交給使用者審查時開始，整個 PR 一次）
 
 背景執行 `.agents/skills/watch-pr/scripts/wait-pr-closed.sh <PR 號碼>`，PR 不再 `OPEN` 時印出 `MERGED` 或 `CLOSED`。
-session 先結束的話，使用者說 PR 已合併或關閉時照下面做（一樣先確認狀態）。不用再問使用者：
+中途暫時查不到會自己重試；以非 0 結束代表第一次就查不到（號碼、登入）或連續查不到太多次，讀 stderr 回報使用者，
+不要自己重開。session 先結束的話，使用者說 PR 已合併或關閉時照下面做（一樣先確認狀態）。不用再問使用者：
 
 1. `git switch main && git fetch --prune && git pull --ff-only`
 2. `MERGED` 才 `git branch -D` 本機分支（squash 後 git 認不出已合併）；`CLOSED` 保留分支並回報。
